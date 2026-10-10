@@ -1,12 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.0.2 — Alpha (2026-10-10)
 
 ### Added
 - **Fact Check tab:** check a statement or post on its own, separate from AI scanning. Paste text, add who said it and a link, or attach a screenshot.
 - Ratings: True, Mostly true, Partially true, Misleading, Mostly false, False, Unverified, and Not a factual claim, each with a plain-English explanation and key evidence.
 - Cited sources show publisher, what each source found, and whether it supports or contradicts the claim. Links the search never returned are removed, and a rating with no verifiable source falls back to Unverified.
 - Draft a reply from a fact check, with the same platform limits and tones as the AI scan.
+
+- **About & version:** Settings has an About section with the version, developer credit, GitHub link and a bug-report link. The macOS About window shows the same.
+- The app version is now taken from the git tag at build time, so it always matches the release. Builds past a tag say "unreleased changes".
 
 ### Changed
 - The AI Scan tab is now media-only. The post-text/link context box and the inline fact-check card moved to the Fact Check tab.
@@ -34,6 +37,6 @@ First internal alpha of TruthLens, a native SwiftUI app for macOS, iOS and iPadO
 - macOS build is signed with a personal development certificate and is not notarized (see install notes).
 
 ### Install (macOS)
-1. Unzip `TruthLens-0.0.1-alpha-macOS.zip` and move `TruthLens.app` to Applications.
+1. Unzip `TruthLens-<version>-alpha-macOS.zip` and move `TruthLens.app` to Applications.
 2. First launch: right-click the app, choose **Open**, then confirm. If macOS still blocks it, run `xattr -cr /Applications/TruthLens.app`.
 3. Enter your Anthropic API key when prompted.
