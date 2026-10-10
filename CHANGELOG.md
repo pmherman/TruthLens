@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.3 — Alpha (2026-10-10)
 
 ### Added
 - **Draft a Community Note:** from any fact-check result, draft a neutral Meta Community Note (500 characters including the source link). Pick which source to link, edit the text, and copy it to paste into Meta. A heads-up appears when the claim was rated true or unverified, since notes are for adding missing context.
