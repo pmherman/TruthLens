@@ -23,14 +23,11 @@ final class AppModel {
     var phase: Phase = .idle
     var previewData: Data?
     var previewKind: MediaKind = .image
-    var postText = ""
-    var postURL = ""
     var apiKey: String = Keychain.load() ?? "" {
         didSet { Keychain.save(apiKey) }
     }
     var showSettings = false
 
-    private var lastPrepared: PreparedMedia?
     private var task: Task<Void, Never>?
 
     var hasKey: Bool { !apiKey.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -57,17 +54,10 @@ final class AppModel {
         run("Reading…") { try await MediaPreparer.prepare(data: imageData, kind: .image) }
     }
 
-    /// Re-run with the current post text / URL (e.g. after the user adds context).
-    func reanalyze() {
-        guard let prepared = lastPrepared else { return }
-        analyze(prepared)
-    }
-
     func reset() {
         task?.cancel()
         phase = .idle
         previewData = nil
-        lastPrepared = nil
     }
 
     // MARK: Pipeline
@@ -91,16 +81,14 @@ final class AppModel {
             showSettings = true
             return
         }
-        lastPrepared = prepared
         previewData = prepared.frames.first
         previewKind = prepared.kind
-        phase = .analyzing("Scanning and fact-checking…")
-        let ctx = UserContext(postText: postText, postURL: postURL)
+        phase = .analyzing("Scanning…")
         let client = client
         task?.cancel()
         task = Task {
             do {
-                let report = try await client.analyze(prepared, context: ctx)
+                let report = try await client.analyze(prepared)
                 if !Task.isCancelled { phase = .done(report) }
             } catch {
                 if !Task.isCancelled { phase = .failed(error.localizedDescription) }

@@ -1,8 +1,14 @@
 # TruthLens
 
-Native SwiftUI app (iOS, iPadOS, macOS) that scans photos, videos and audio for signs of AI generation,
-flags scams / catfishing / political propaganda, fact-checks the claim attached to the media, and drafts
-replies sized to each platform's character limit.
+Native SwiftUI app (iOS, iPadOS, macOS) with two tools, each in its own tab:
+
+- **AI Scan** – checks photos, videos and audio for signs of AI generation and flags scams / catfishing /
+  political propaganda.
+- **Fact Check** – checks a statement or post (typed, linked, or from a screenshot) against independent
+  sources and rates it True, Mostly true, Partially true, Misleading, Mostly false, False or Unverified, with an
+  explanation and cited sources.
+
+Both can draft replies sized to each platform's character limit.
 
 ## Install
 
@@ -18,7 +24,7 @@ First launch asks for your Anthropic API key (stored in the Keychain).
 |---|---|
 | `MetadataAnalyzer` (on-device) | C2PA / Content Credentials, IPTC `trainedAlgorithmicMedia`, generator strings, PNG prompt chunks, camera EXIF |
 | `ClaudeClient.analyze` | Sends downscaled image (or 5 video frames) + metadata findings to Claude; returns score, reasons, risk flags |
-| Web search tool | Fact-checks claims and any post URL you supply |
+| `ClaudeClient.factCheck` | Web-searches primary data and independent outlets, returns a rating, explanation, evidence and per-source findings. Any cited URL the search didn't actually return is dropped |
 | `ReplyPlatform` | Per-platform limits (Threads 500, X 280, Bluesky 300, Facebook 8,000, …); output is hard-trimmed to fit |
 
 A hard embedded AI marker overrides the model's visual opinion.

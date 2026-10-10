@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Fact Check tab:** check a statement or post on its own, separate from AI scanning. Paste text, add who said it and a link, or attach a screenshot.
+- Ratings: True, Mostly true, Partially true, Misleading, Mostly false, False, Unverified, and Not a factual claim, each with a plain-English explanation and key evidence.
+- Cited sources show publisher, what each source found, and whether it supports or contradicts the claim. Links the search never returned are removed, and a rating with no verifiable source falls back to Unverified.
+- Draft a reply from a fact check, with the same platform limits and tones as the AI scan.
+
+### Changed
+- The AI Scan tab is now media-only. The post-text/link context box and the inline fact-check card moved to the Fact Check tab.
+
 ## 0.0.1 — Alpha (2026-10-09)
 
 First internal alpha of TruthLens, a native SwiftUI app for macOS, iOS and iPadOS.

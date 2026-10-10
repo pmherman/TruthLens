@@ -20,7 +20,6 @@ struct ReportView: View {
         VStack(spacing: 16) {
             header
             if !report.risks.isEmpty { risks }
-            if let fc = report.factCheck, fc.rating != .noClaim { FactCheckCard(fact: fc) }
             reasons
             Button(action: onReply) {
                 Label("Draft a reply", systemImage: "arrowshape.turn.up.left.fill")
@@ -101,52 +100,6 @@ struct ScoreRing: View {
         }
         .frame(width: 92, height: 92)
         .onAppear { withAnimation(.easeOut(duration: 0.9)) { shown = Double(score) } }
-    }
-}
-
-struct FactCheckCard: View {
-    let fact: FactCheck
-
-    private var color: Color {
-        switch fact.rating {
-        case .true_, .mostlyTrue: .green
-        case .misleading: .orange
-        case .false_: .red
-        default: .gray
-        }
-    }
-    private var label: String {
-        switch fact.rating {
-        case .true_: "True"
-        case .mostlyTrue: "Mostly true"
-        case .misleading: "Misleading"
-        case .false_: "False"
-        case .unverified: "Unverified"
-        case .noClaim: "No claim"
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Fact check", systemImage: "checkmark.seal.fill").font(.headline)
-                Spacer()
-                Text(label).font(.subheadline.bold()).foregroundStyle(color)
-                    .padding(.horizontal, 10).padding(.vertical, 3)
-                    .background(color.opacity(0.15), in: Capsule())
-            }
-            Text("“\(fact.claim)”").font(.subheadline.italic())
-            Text(fact.summary).font(.subheadline).foregroundStyle(.secondary)
-            ForEach(fact.sources) { src in
-                if let url = URL(string: src.url) {
-                    Link(destination: url) {
-                        Label(src.title, systemImage: "link").font(.footnote).lineLimit(1)
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card()
     }
 }
 

@@ -27,18 +27,54 @@ final class CoreTests: XCTestCase {
         Here you go:
         {"aiScore": 140, "verdict": "likelyAI", "headline": "h",
          "reasons": [{"title":"Hands","detail":"Six fingers","source":"visual","indicatesAI":true}],
-         "risks": [{"category":"propaganda","explanation":"x"}],
-         "factCheck": {"claim":"c","rating":"false","summary":"s","sources":[{"title":"t","url":"https://e.com"}]}}
+         "risks": [{"category":"propaganda","explanation":"x"}]}
         """
         let r = try ClaudeClient.parseReport(text)
         XCTAssertEqual(r.aiScore, 100)
-        XCTAssertEqual(r.factCheck?.rating, .false_)
         XCTAssertEqual(r.risks.first?.category, .propaganda)
     }
 
     func testMetadataFloorOverridesLowScore() throws {
-        let r = AnalysisReport(aiScore: 20, verdict: .likelyAuthentic, headline: "", reasons: [], risks: [], factCheck: nil)
+        let r = AnalysisReport(aiScore: 20, verdict: .likelyAuthentic, headline: "", reasons: [], risks: [])
         let sig = MetadataSignal(label: "AI marker", detail: "d", strength: .strongAI)
         XCTAssertEqual(ClaudeClient.applyMetadataFloor(r, signals: [sig]).verdict, .aiGenerated)
+    }
+
+    // MARK: Fact check
+
+    private func factJSON(rating: String = "partially-true", url: String = "https://eia.gov/gas") -> String {
+        """
+        Searching… {"claim":"Gas prices are down","rating":"\(rating)","headline":"h","explanation":"e",
+         "evidence":[{"title":"t","detail":"d","stance":"SUPPORTS"},{"title":"u","detail":"d","stance":"weird"}],
+         "sources":[{"title":"EIA","publisher":"EIA","url":"\(url)","finding":"f","stance":"supports"}],
+         "caveats":null}
+        """
+    }
+
+    func testParsesFactCheckAndToleratesLooseEnums() throws {
+        let r = try ClaudeClient.parseFactCheck(factJSON())
+        XCTAssertEqual(r.rating, .partiallyTrue)
+        XCTAssertEqual(r.evidence.map(\.stance), [.supports, .context])
+        XCTAssertNil(r.caveats)
+    }
+
+    func testUnknownRatingBecomesUnverified() throws {
+        XCTAssertEqual(try ClaudeClient.parseFactCheck(factJSON(rating: "who knows")).rating, .unverified)
+        XCTAssertEqual(try ClaudeClient.parseFactCheck(factJSON(rating: "Mostly_False")).rating, .mostlyFalse)
+    }
+
+    func testDropsSourcesTheSearchNeverReturned() throws {
+        let r = try ClaudeClient.parseFactCheck(factJSON(rating: "false", url: "https://made-up.example/x"))
+        let out = ClaudeClient.keepRetrievedSources(r, retrieved: ["https://eia.gov/gas"])
+        XCTAssertTrue(out.sources.isEmpty)
+        XCTAssertEqual(out.rating, .unverified)
+        XCTAssertNotNil(out.caveats)
+    }
+
+    func testKeepsRetrievedSourcesDespiteTrailingSlashAndCase() throws {
+        let r = try ClaudeClient.parseFactCheck(factJSON(rating: "false", url: "https://EIA.gov/gas/"))
+        let out = ClaudeClient.keepRetrievedSources(r, retrieved: [ClaudeClient.normalizedURL("https://eia.gov/gas")])
+        XCTAssertEqual(out.sources.count, 1)
+        XCTAssertEqual(out.rating, .false_)
     }
 }

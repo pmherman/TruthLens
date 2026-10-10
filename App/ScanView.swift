@@ -3,21 +3,18 @@ import PhotosUI
 import UniformTypeIdentifiers
 import TruthLensCore
 
-struct ContentView: View {
+struct ScanView: View {
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
     @State private var importing = false
     @State private var targeted = false
-    @State private var showContext = false
     @State private var showReply = false
 
     var body: some View {
-        @Bindable var model = model
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     dropZone
-                    contextCard
                     switch model.phase {
                     case .idle: EmptyView()
                     case .analyzing(let status): ProgressCard(status: status)
@@ -33,7 +30,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(Background())
-            .navigationTitle("TruthLens")
+            .navigationTitle("AI Scan")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { model.showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
@@ -45,9 +42,12 @@ struct ContentView: View {
                 }
             }
         }
-        .sheet(isPresented: $model.showSettings) { SettingsView() }
         .sheet(isPresented: $showReply) {
-            if let report = model.report { ReplySheet(report: report) }
+            if let report = model.report {
+                ReplySheet { platform, tone in
+                    try await model.client.draftReply(for: report, platform: platform, tone: tone)
+                }
+            }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.image, .movie, .audio]) { result in
             if case .success(let url) = result { model.load(url: url) }
@@ -60,7 +60,6 @@ struct ContentView: View {
             model.load(url: url)
             return true
         } isTargeted: { targeted = $0 }
-        .task { if !model.hasKey { model.showSettings = true } }
     }
 
     // MARK: Pieces
@@ -112,31 +111,6 @@ struct ContentView: View {
         .animation(.snappy, value: targeted)
     }
 
-    private var contextCard: some View {
-        @Bindable var model = model
-        return DisclosureGroup(isExpanded: $showContext) {
-            VStack(spacing: 10) {
-                TextField("Post text (optional)", text: $model.postText, axis: .vertical)
-                    .lineLimit(2...5)
-                TextField("Post link (optional)", text: $model.postURL)
-                    #if os(iOS)
-                    .textInputAutocapitalization(.never).keyboardType(.URL)
-                    #endif
-                    .autocorrectionDisabled()
-                if model.previewData != nil {
-                    Button("Re-scan with context", systemImage: "arrow.clockwise") { model.reanalyze() }
-                        .buttonStyle(.bordered)
-                }
-            }
-            .textFieldStyle(.roundedBorder)
-            .padding(.top, 10)
-        } label: {
-            Label("Add post context for fact-checking", systemImage: "text.bubble")
-                .font(.subheadline.weight(.medium))
-        }
-        .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
 }
 
 struct Background: View {

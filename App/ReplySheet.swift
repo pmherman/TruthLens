@@ -2,9 +2,9 @@ import SwiftUI
 import TruthLensCore
 
 struct ReplySheet: View {
-    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    let report: AnalysisReport
+    /// Produces a draft for the chosen platform and tone (scan or fact-check).
+    let generate: (ReplyPlatform, ReplyTone) async throws -> String
 
     @AppStorage("replyPlatform") private var platformRaw = ReplyPlatform.facebook.rawValue
     @AppStorage("replyTone") private var toneRaw = ReplyTone.calm.rawValue
@@ -50,7 +50,7 @@ struct ReplySheet: View {
                     if let error { Text(error).foregroundStyle(.red) }
                 }
                 Section {
-                    Button { Task { await generate() } } label: {
+                    Button { Task { await draft() } } label: {
                         Label(text.isEmpty ? "Generate" : "Regenerate", systemImage: "sparkles")
                     }.disabled(busy)
                     Button {
@@ -79,12 +79,11 @@ struct ReplySheet: View {
         .presentationDetents([.large])
     }
 
-    private func generate() async {
+    private func draft() async {
         busy = true; error = nil
         defer { busy = false }
         do {
-            text = try await model.client.draftReply(for: report, platform: platform,
-                                                     tone: ReplyTone(rawValue: toneRaw) ?? .calm)
+            text = try await generate(platform, ReplyTone(rawValue: toneRaw) ?? .calm)
         } catch {
             self.error = error.localizedDescription
         }

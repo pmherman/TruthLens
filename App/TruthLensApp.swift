@@ -6,7 +6,7 @@ struct TruthLensApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
                 .environment(model)
                 #if os(macOS)
                 .frame(minWidth: 520, minHeight: 640)
