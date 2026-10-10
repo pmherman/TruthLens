@@ -81,6 +81,15 @@ public struct ClaudeClient: Sendable {
         return ReplyLength.fit(text, limit: limit)
     }
 
+    /// Drafts the text of a Community Note (without its link). Combine with `CommunityNote.compose`.
+    public func draftCommunityNote(for report: FactCheckReport, source: FactSource) async throws -> String {
+        let budget = CommunityNote.bodyBudget(source: source)
+        let prompt = Prompts.noteUser(report: report, source: source, budget: budget)
+        let text = try await send(system: Prompts.noteSystem, content: [["type": "text", "text": prompt]],
+                                  webSearchUses: 0, maxTokens: 600).text
+        return ReplyLength.fit(text, limit: budget)
+    }
+
     // MARK: Parsing (internal for tests)
 
     static func parseReport(_ text: String) throws -> AnalysisReport {

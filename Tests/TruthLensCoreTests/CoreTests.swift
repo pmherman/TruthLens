@@ -77,4 +77,47 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(out.sources.count, 1)
         XCTAssertEqual(out.rating, .false_)
     }
+
+    // MARK: Community notes
+
+    private func report(_ rating: ClaimRating, sources: [FactSource]) -> FactCheckReport {
+        FactCheckReport(claim: "c", rating: rating, headline: "h", explanation: "e", evidence: [],
+                        sources: sources, caveats: nil)
+    }
+
+    private func source(_ url: String, _ stance: Stance) -> FactSource {
+        FactSource(title: "t", publisher: "p", url: url, finding: "f", stance: stance)
+    }
+
+    func testNotePicksSourceThatMatchesRating() {
+        let ctx = source("https://a.com", .context), sup = source("https://b.com", .supports)
+        let con = source("https://c.com", .contradicts)
+        XCTAssertEqual(CommunityNote.bestSource(for: report(.false_, sources: [ctx, sup, con]))?.url, "https://c.com")
+        XCTAssertEqual(CommunityNote.bestSource(for: report(.true_, sources: [ctx, con, sup]))?.url, "https://b.com")
+        XCTAssertEqual(CommunityNote.bestSource(for: report(.false_, sources: [ctx, sup]))?.url, "https://b.com")
+        XCTAssertNil(CommunityNote.bestSource(for: report(.false_, sources: [])))
+    }
+
+    func testNoteWithLinkNeverExceedsLimit() {
+        let src = source("https://www.eia.gov/dnav/pet/pet_pri_gnd_dcus_nus_w.htm", .contradicts)
+        let note = CommunityNote.compose(body: String(repeating: "word ", count: 300), source: src)
+        XCTAssertLessThanOrEqual(note.count, CommunityNote.characterLimit)
+        XCTAssertTrue(note.hasSuffix(src.url))
+    }
+
+    func testShortNoteKeepsBodyAndLink() {
+        let src = source("https://e.com", .supports)
+        XCTAssertEqual(CommunityNote.compose(body: "Context.", source: src), "Context. https://e.com")
+    }
+
+    func testNotesAreForContextNotForTrueClaims() {
+        XCTAssertTrue(CommunityNote.isUsuallyWarranted(.misleading))
+        XCTAssertFalse(CommunityNote.isUsuallyWarranted(.true_))
+    }
+
+    func testFitWithNoRoomReturnsEmptyInsteadOfCrashing() {
+        XCTAssertEqual(ReplyLength.fit("hello world", limit: 0), "")
+        let huge = source("https://e.com/" + String(repeating: "a", count: 600), .supports)
+        XCTAssertLessThanOrEqual(CommunityNote.compose(body: "Context.", source: huge).count, huge.url.count)
+    }
 }

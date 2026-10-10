@@ -54,6 +54,7 @@ public enum ReplyLength {
     /// Hard-trims at a word boundary so a reply never exceeds the platform limit.
     public static func fit(_ text: String, limit: Int) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard limit > 1 else { return "" }
         guard trimmed.count > limit else { return trimmed }
         let cut = String(trimmed.prefix(limit - 1))
         if let space = cut.lastIndex(of: " ") { return String(cut[..<space]) + "…" }

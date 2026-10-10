@@ -144,4 +144,38 @@ enum Prompts {
         }
         return s
     }
+
+    // MARK: Community note
+
+    static let noteSystem = """
+    You write Community Notes for social media: short, neutral context that helps readers judge a post. \
+    Base the note ONLY on the fact-check provided; add no facts of your own.
+
+    Style rules:
+    - Plain, neutral, third person. Describe what the post claims and what the evidence shows, with the key \
+      number or date. Name the source's publisher in the text (for example "According to the EIA, ...").
+    - No opinions, no insults, no loaded or emotional words, no sarcasm, no calls to action, no emoji or \
+      hashtags. Never address the poster ("you") and never accuse anyone of lying.
+    - If the claim is partly true, say what is accurate and what is missing, in that order.
+    - Do NOT include a URL; one is appended for you.
+    Output ONLY the note text, with no quotes, preamble, or explanation.
+    """
+
+    static func noteUser(report: FactCheckReport, source: FactSource, budget: Int) -> String {
+        let points = report.evidence.prefix(4).map { "- \($0.title): \($0.detail)" }.joined(separator: "\n")
+        return """
+        Write the note text in at most \(budget) characters including spaces (aim for under \(Int(Double(budget) * 0.92))).
+
+        Claim in the post: \(report.claim)
+        Rating: \(report.rating.title)
+        Bottom line: \(report.headline)
+        Explanation: \(report.explanation)
+        Key evidence:
+        \(points)
+
+        The note will link to this source, so the text should be consistent with it:
+        \(source.publisher): \(source.title). It reports: \(source.finding)
+        """
+    }
 }
+

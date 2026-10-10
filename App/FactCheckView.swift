@@ -59,6 +59,7 @@ struct FactCheckView: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var importing = false
     @State private var showReply = false
+    @State private var showNote = false
 
     var body: some View {
         NavigationStack {
@@ -72,7 +73,7 @@ struct FactCheckView: View {
                         inputCard
                         ProgressCard(status: "Searching independent sources…")
                     case .done(let report):
-                        FactCheckReportView(report: report, onReply: { showReply = true })
+                        FactCheckReportView(report: report, onReply: { showReply = true }, onNote: { showNote = true })
                     }
                     Text("Fact checks are drawn from web sources and can be wrong or out of date. Open the sources and judge for yourself.")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
@@ -104,6 +105,9 @@ struct FactCheckView: View {
                     try await app.client.draftReply(for: report, platform: platform, tone: tone)
                 }
             }
+        }
+        .sheet(isPresented: $showNote) {
+            if let report = model.report { CommunityNoteSheet(report: report) }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.image]) { result in
             if case .success(let url) = result { model.attach(url: url) }
@@ -186,6 +190,7 @@ struct FactCheckView: View {
 struct FactCheckReportView: View {
     let report: FactCheckReport
     let onReply: () -> Void
+    let onNote: () -> Void
 
     var body: some View {
         VStack(spacing: 16) {
@@ -203,6 +208,12 @@ struct FactCheckReportView: View {
                 Label("Draft a reply", systemImage: "arrowshape.turn.up.left.fill").frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
+            if !report.sources.isEmpty && report.rating != .notCheckable {
+                Button(action: onNote) {
+                    Label("Draft a Community Note", systemImage: "person.3.sequence.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered).controlSize(.large)
+            }
         }
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
