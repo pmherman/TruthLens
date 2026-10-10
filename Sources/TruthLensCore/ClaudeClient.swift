@@ -18,6 +18,8 @@ public struct ClaudeClient: Sendable {
     public var apiKey: String
     public var model: String
     public var session: URLSession
+    /// Called after every API call with what it consumed, so the app can show usage and cost.
+    public var usageSink: (@Sendable (UsageKind, APIUsage, String) -> Void)?
 
     public init(apiKey: String, model: String = "claude-sonnet-5-5", session: URLSession = .shared) {
         self.apiKey = apiKey
@@ -36,7 +38,7 @@ public struct ClaudeClient: Sendable {
                         "text": Prompts.analysisUser(kind: media.kind, frameCount: media.frames.count,
                                                      signals: MetadataAnalyzer.summary(media.signals))])
         let text = try await send(system: Prompts.analysisSystem, content: content,
-                                  webSearchUses: 3, maxTokens: 4096).text
+                                  webSearchUses: 3, maxTokens: 4096, kind: .scan).text
         var report = try Self.parseReport(text)
         report = Self.applyMetadataFloor(report, signals: media.signals)
         return report
@@ -46,7 +48,7 @@ public struct ClaudeClient: Sendable {
         let limit = platform.characterLimit
         let prompt = Prompts.replyUser(report: report, platform: platform, tone: tone, limit: limit)
         let text = try await send(system: Prompts.replySystem, content: [["type": "text", "text": prompt]],
-                                  webSearchUses: 0, maxTokens: 1024).text
+                                  webSearchUses: 0, maxTokens: 1024, kind: .reply).text
         return ReplyLength.fit(text, limit: limit)
     }
 
@@ -69,7 +71,7 @@ public struct ClaudeClient: Sendable {
                         "text": Prompts.factCheckUser(claim: claim, speaker: speaker, url: url,
                                                       hasScreenshot: screenshot != nil, today: day)])
         let reply = try await send(system: Prompts.factCheckSystem(depth: depth), content: content,
-                                   webSearchUses: depth.maxSearches, maxTokens: 3500, onProgress: onProgress)
+                                   webSearchUses: depth.maxSearches, maxTokens: 3500, kind: .factCheck, onProgress: onProgress)
         let report = try Self.parseFactCheck(reply.text)
         return Self.keepRetrievedSources(report, retrieved: reply.retrievedURLs)
     }
@@ -82,7 +84,7 @@ public struct ClaudeClient: Sendable {
         let day = today.formatted(.iso8601.year().month().day())
         let prompt = Prompts.followUpUser(report: report, history: history, question: question, today: day)
         let reply = try await send(system: Prompts.followUpSystem, content: [["type": "text", "text": prompt]],
-                                   webSearchUses: 3, maxTokens: 2000, onProgress: onProgress)
+                                   webSearchUses: 3, maxTokens: 2000, kind: .followUp, onProgress: onProgress)
         let parsed = try Self.parseFollowUp(reply.text)
         return Self.keepVerifiedSources(parsed, retrieved: reply.retrievedURLs,
                                         known: Set(report.sources.map { Self.normalizedURL($0.url) }))
@@ -92,7 +94,7 @@ public struct ClaudeClient: Sendable {
         let limit = platform.characterLimit
         let prompt = Prompts.factReplyUser(report: report, platform: platform, tone: tone, limit: limit)
         let text = try await send(system: Prompts.factReplySystem, content: [["type": "text", "text": prompt]],
-                                  webSearchUses: 0, maxTokens: 1024).text
+                                  webSearchUses: 0, maxTokens: 1024, kind: .reply).text
         return ReplyLength.fit(text, limit: limit)
     }
 
@@ -101,7 +103,7 @@ public struct ClaudeClient: Sendable {
         let budget = CommunityNote.bodyBudget(source: source)
         let prompt = Prompts.noteUser(report: report, source: source, budget: budget)
         let text = try await send(system: Prompts.noteSystem, content: [["type": "text", "text": prompt]],
-                                  webSearchUses: 0, maxTokens: 600).text
+                                  webSearchUses: 0, maxTokens: 600, kind: .note).text
         return ReplyLength.fit(text, limit: budget)
     }
 
@@ -214,10 +216,10 @@ public struct ClaudeClient: Sendable {
 
     /// With `onProgress` the response is streamed so the caller can show live search status.
     private func send(system: String, content: [[String: Any]], webSearchUses: Int, maxTokens: Int,
-                      onProgress: (@Sendable (SearchProgress) -> Void)? = nil) async throws -> Reply {
+                      kind: UsageKind, onProgress: (@Sendable (SearchProgress) -> Void)? = nil) async throws -> Reply {
         let req = try makeRequest(system: system, content: content, webSearchUses: webSearchUses,
                                   maxTokens: maxTokens, stream: onProgress != nil)
-        if let onProgress { return try await stream(req, onProgress: onProgress) }
+        if let onProgress { return try await stream(req, kind: kind, onProgress: onProgress) }
 
         let (data, resp) = try await session.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
@@ -233,10 +235,14 @@ public struct ClaudeClient: Sendable {
                 if let u = hit["url"] as? String { urls.insert(Self.normalizedURL(u)) }
             }
         }
+        var usage = APIUsage()
+        usage.merge(json["usage"] as? [String: Any])
+        if !usage.isEmpty { usageSink?(kind, usage, model) }
         return Reply(text: text, retrievedURLs: urls)
     }
 
-    private func stream(_ req: URLRequest, onProgress: @Sendable (SearchProgress) -> Void) async throws -> Reply {
+    private func stream(_ req: URLRequest, kind: UsageKind,
+                        onProgress: @Sendable (SearchProgress) -> Void) async throws -> Reply {
         let (bytes, resp) = try await session.bytes(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard code == 200 else {
@@ -245,6 +251,8 @@ public struct ClaudeClient: Sendable {
             throw Self.httpError(code, raw)
         }
         var acc = StreamAccumulator()
+        // Tokens are billed even if the user cancels or the stream fails part-way, so always report what we saw.
+        defer { let u = acc.finalUsage; if !u.isEmpty { usageSink?(kind, u, model) } }
         for try await line in bytes.lines {
             guard line.hasPrefix("data:") else { continue }
             let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)

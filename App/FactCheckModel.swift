@@ -33,7 +33,11 @@ final class FactCheckModel {
 
     /// Where finished checks and their follow-ups are saved. Set by `AppModel`.
     var history: HistoryModel?
+    var usage: UsageTracker?
     private var entryID: UUID?
+    private var statsID: UUID?
+    /// True only right after a check, so a result reopened from History doesn't show an unrelated cost.
+    var showsCost = false
 
     private var task: Task<Void, Never>?
     private var followTask: Task<Void, Never>?
@@ -59,6 +63,7 @@ final class FactCheckModel {
         guard canCheck else { return }
         task?.cancel()
         phase = .checking
+        showsCost = false
         status = "Starting…"
         let (claim, speaker, url, shot, depth) =
             (claim, speaker, postURL.trimmingCharacters(in: .whitespacesAndNewlines), screenshot, depth)
@@ -75,6 +80,10 @@ final class FactCheckModel {
                 phase = .done(report)
                 entryID = history?.recordFact(claim: claim, speaker: speaker, url: url, depth: depth,
                                               report: report, screenshot: shot)
+                let id = entryID ?? UUID()
+                statsID = id
+                usage?.recordCheck(id: id, kind: .factCheck, outcome: report.rating.rawValue)
+                showsCost = true
             } catch {
                 if !Task.isCancelled { phase = .failed(error.localizedDescription) }
             }
@@ -104,6 +113,8 @@ final class FactCheckModel {
         phase = .idle
         lastReport = nil
         entryID = nil
+        statsID = nil
+        showsCost = false
         thread = []
         followUpText = ""
         claim = ""; speaker = ""; postURL = ""; screenshot = nil
@@ -147,6 +158,7 @@ final class FactCheckModel {
         thread[i].applied = true
         lastReport = updated
         phase = .done(updated)
+        usage?.updateOutcome(id: statsID, outcome: updated.rating.rawValue)
         persist()
     }
 
@@ -172,6 +184,8 @@ final class FactCheckModel {
         followUpText = ""
         lastReport = fact.report
         entryID = entry.id
+        statsID = entry.id
+        showsCost = false
         phase = .done(fact.report)
     }
 

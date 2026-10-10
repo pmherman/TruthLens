@@ -289,5 +289,72 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(SpokenText.clean("First.   \n\n  Second.\t Third"), "First.\nSecond. Third")
         XCTAssertEqual(SpokenText.clean("   \n  "), "")
     }
+
+    // MARK: Usage, cost and stats
+
+    func testCostMatchesPublishedSonnet55Rates() {
+        // 10,000 in x $2/M + 1,000 out x $10/M + 3 searches x $0.01 = 0.02 + 0.01 + 0.03
+        let u = APIUsage(inputTokens: 10_000, outputTokens: 1_000, webSearches: 3)
+        XCTAssertEqual(ModelPricing.forModel("claude-sonnet-5-5").cost(u), 0.06, accuracy: 1e-9)
+        XCTAssertEqual(ModelPricing.forModel("claude-opus-5-5").cost(APIUsage(inputTokens: 1_000_000)), 4, accuracy: 1e-9)
+        XCTAssertEqual(ModelPricing.forModel("unknown-model"), ModelPricing.forModel("claude-sonnet-5-5"))
+    }
+
+    func testCachedTokensAreBilledAtTheirOwnRates() {
+        let u = APIUsage(inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000, cacheWriteTokens: 1_000_000)
+        XCTAssertEqual(ModelPricing.forModel("claude-sonnet-5-5").cost(u), 0.10 + 2.50, accuracy: 1e-9)
+    }
+
+    func testMoneyFormatNeverHidesSmallAmounts() {
+        XCTAssertEqual(Money.format(0), "$0.00")
+        XCTAssertEqual(Money.format(0.0004), "<$0.001")
+        XCTAssertEqual(Money.format(0.042), "$0.042")
+        XCTAssertEqual(Money.format(1.366), "$1.37")
+    }
+
+    func testStreamCapturesCumulativeUsageAndSearches() throws {
+        var acc = StreamAccumulator()
+        func feed(_ json: String) throws { _ = try acc.consume(try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]) }
+        try feed(#"{"type":"message_start","message":{"usage":{"input_tokens":2679,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":2}}}"#)
+        try feed(#"{"type":"content_block_start","index":1,"content_block":{"type":"server_tool_use","name":"web_search"}}"#)
+        XCTAssertEqual(acc.finalUsage.webSearches, 1)   // counted even if the stream is cut off here
+        try feed(#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":10682,"output_tokens":510,"server_tool_use":{"web_search_requests":2}}}"#)
+        XCTAssertEqual(acc.finalUsage, APIUsage(inputTokens: 10_682, outputTokens: 510, webSearches: 2))
+    }
+
+    func testUsageSummaryByPeriodAndKind() {
+        let now = Date(), yesterday = now.addingTimeInterval(-86_400 * 2)
+        let a = UsageRecord(date: now, kind: .factCheck, model: "claude-sonnet-5-5", usage: APIUsage(inputTokens: 10_000, outputTokens: 1_000, webSearches: 3))
+        let b = UsageRecord(date: yesterday, kind: .reply, model: "claude-sonnet-5-5", usage: APIUsage(inputTokens: 1_000, outputTokens: 200))
+        let all = UsageStats.summary([a, b])
+        XCTAssertEqual(all.calls, 2)
+        XCTAssertEqual(all.cost, a.cost + b.cost, accuracy: 1e-12)
+        XCTAssertEqual(UsageStats.summary([a, b], since: UsageStats.startOfToday(now)).calls, 1)
+        XCTAssertEqual(UsageStats.summary([a, b], kind: .reply).searches, 0)
+        XCTAssertEqual(UsageStats.summary([a, b], kind: .factCheck).averageCost ?? 0, 0.06, accuracy: 1e-9)
+        XCTAssertNil(UsageStats.summary([a], kind: .scan).averageCost)
+    }
+
+    func testResultBucketsGroupRatingsAndVerdicts() {
+        let facts = ["true", "mostlyTrue", "partiallyTrue", "misleading", "false", "unverified", "notCheckable", "mostlyFalse"]
+            .map { CheckRecord(kind: .factCheck, outcome: $0) }
+        let b = ResultStats.factBuckets(facts)
+        XCTAssertEqual(b[.true_], 2); XCTAssertEqual(b[.mixed], 2); XCTAssertEqual(b[.false_], 2); XCTAssertEqual(b[.unclear], 2)
+        XCTAssertEqual(ResultStats.factCounts(facts)[.misleading], 1)
+        let scans = ["aiGenerated", "likelyAI", "uncertain", "authentic"].map { CheckRecord(kind: .scan, outcome: $0) }
+        let sb = ResultStats.scanBuckets(scans + facts)   // fact checks never leak into scan counts
+        XCTAssertEqual(sb[.ai], 2); XCTAssertEqual(sb[.inconclusive], 1); XCTAssertEqual(sb[.authentic], 1)
+    }
+
+    func testLedgerRoundTripsAndToleratesAMissingFile() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ledger-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let ledger = JSONLedger<CheckRecord>(url: url)
+        XCTAssertTrue(ledger.load().isEmpty)
+        let rec = CheckRecord(kind: .factCheck, outcome: "false")
+        ledger.save([rec])
+        XCTAssertEqual(ledger.load().first?.id, rec.id)
+        XCTAssertEqual(ledger.load().first?.outcome, "false")
+    }
 }
 

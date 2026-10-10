@@ -16,7 +16,7 @@ struct PickedMovie: Transferable {
     }
 }
 
-enum AppTab: Hashable { case scan, factCheck, history }
+enum AppTab: Hashable { case scan, factCheck, history, stats }
 
 @MainActor @Observable
 final class AppModel {
@@ -32,15 +32,30 @@ final class AppModel {
     var tab: AppTab = .scan
 
     let history = HistoryModel()
+    let usage = UsageTracker()
     let factCheck = FactCheckModel()
+    var showsScanCost = false
 
-    init() { factCheck.history = history }
+    init() {
+        factCheck.history = history
+        factCheck.usage = usage
+    }
 
     private var task: Task<Void, Never>?
 
     var hasKey: Bool { !apiKey.trimmingCharacters(in: .whitespaces).isEmpty }
     var report: AnalysisReport? { if case .done(let r) = phase { r } else { nil } }
-    var client: ClaudeClient { ClaudeClient(apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    /// A client that reports every call's token and search usage to the tracker.
+    var client: ClaudeClient {
+        var c = ClaudeClient(apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines))
+        c.usageSink = { [usage] kind, used, model in
+            Task { @MainActor in usage.record(kind: kind, usage: used, model: model) }
+        }
+        return c
+    }
+
+    /// Rates shown to the user, for the model the app calls.
+    var pricing: ModelPricing { ModelPricing.forModel(client.model) }
 
     // MARK: Intake
 
@@ -91,6 +106,7 @@ final class AppModel {
         }
         previewData = prepared.frames.first
         previewKind = prepared.kind
+        showsScanCost = false
         phase = .analyzing("Scanning…")
         let client = client
         task?.cancel()
@@ -99,7 +115,9 @@ final class AppModel {
                 let report = try await client.analyze(prepared)
                 if !Task.isCancelled {
                     phase = .done(report)
-                    history.recordScan(report: report, kind: prepared.kind, image: prepared.frames.first)
+                    let id = history.recordScan(report: report, kind: prepared.kind, image: prepared.frames.first) ?? UUID()
+                    usage.recordCheck(id: id, kind: .scan, outcome: report.verdict.rawValue)
+                    showsScanCost = true
                 }
             } catch {
                 if !Task.isCancelled { phase = .failed(error.localizedDescription) }
@@ -115,6 +133,7 @@ final class AppModel {
         case .scan:
             guard let scan = entry.scan else { return }
             task?.cancel()
+            showsScanCost = false
             previewData = history.thumbnail(for: entry.id)
             previewKind = scan.mediaKind
             phase = .done(scan.report)

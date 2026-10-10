@@ -75,6 +75,7 @@ struct FactCheckView: View {
                     case .done(let report):
                         FactCheckReportView(report: report, model: model,
                                             onReply: { showReply = true }, onNote: { showNote = true })
+                        if model.showsCost { CostNote(cost: app.usage.lastCost[.factCheck]) }
                     }
                     Text("Fact checks are drawn from web sources and can be wrong or out of date. Open the sources and judge for yourself.")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)

@@ -34,12 +34,14 @@ final class HistoryModel {
 
     // MARK: Recording
 
-    func recordScan(report: AnalysisReport, kind: MediaKind, image: Data?) {
-        guard savingEnabled else { return }
+    @discardableResult
+    func recordScan(report: AnalysisReport, kind: MediaKind, image: Data?) -> UUID? {
+        guard savingEnabled else { return nil }
         let thumb = image.flatMap { MediaPreparer.thumbnail(from: $0, maxPixel: Self.scanThumbPixels) }
         let entry = HistoryEntry(kind: .scan, hasThumbnail: thumb != nil,
                                  scan: ScanRecord(mediaKind: kind, report: report))
         insert(entry, thumbnail: thumb)
+        return entry.id
     }
 
     /// Returns the new entry's id so later follow-ups can be saved onto it.

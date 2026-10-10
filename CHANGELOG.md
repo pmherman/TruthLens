@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- **Stats tab:** your results at a glance. Fact checks grouped as True, Mixed, False and Unclear (with a per-rating breakdown), and AI scans as AI-generated, Inconclusive and Authentic. Totals are kept separately from History, so clearing history doesn't erase them, and a revised rating updates the counts.
+- **Usage and cost:** every API call is tracked (tokens and web searches) and priced from Anthropic's published rates. Stats shows today, this month and all-time spend, plus a per-feature breakdown with the average cost of each fact check, scan, follow-up, reply and note.
+- **Cost transparency:** results show "This check cost about $0.04". Settings shows the rates next to the API key field and your monthly estimate. Stats explains how billing works (your own key, billed by Anthropic) and what each search depth can cost.
+- Reset buttons for results and for usage totals.
 - **Listen to replies:** a Listen button (with pause, resume and stop) reads a drafted reply or Community Note aloud. Choose a speed (slow, normal, fast) and a voice. It uses Apple's on-device voices, so it's free, works offline, and nothing is sent anywhere. Links, markdown and emoji are skipped so it reads naturally.
 - **History tab:** every AI scan and fact check is saved with a reduced-quality image, the claim, the result and the whole follow-up thread. Tap an item to reopen it in its own tab and keep going (follow-ups, replies, Community Notes).
 - **Storage meter:** History shows how much space it uses and offers **Clear history** in one tap. A switch turns saving off.

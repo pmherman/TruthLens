@@ -15,6 +15,9 @@ struct RootView: View {
             HistoryView()
                 .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
                 .tag(AppTab.history)
+            StatsView()
+                .tabItem { Label("Stats", systemImage: "chart.bar.xaxis") }
+                .tag(AppTab.stats)
         }
         .sheet(isPresented: $model.showSettings) { SettingsView() }
         .task { if !model.hasKey { model.showSettings = true } }

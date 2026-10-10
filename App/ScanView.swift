@@ -19,7 +19,9 @@ struct ScanView: View {
                     case .idle: EmptyView()
                     case .analyzing(let status): ProgressCard(status: status)
                     case .failed(let message): ErrorCard(message: message)
-                    case .done(let report): ReportView(report: report) { showReply = true }
+                    case .done(let report):
+                        ReportView(report: report) { showReply = true }
+                        if model.showsScanCost { CostNote(cost: model.usage.lastCost[.scan]) }
                     }
                     Text("AI detection is probabilistic. Treat results as evidence, not proof.")
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)

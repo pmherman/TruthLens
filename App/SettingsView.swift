@@ -1,4 +1,5 @@
 import SwiftUI
+import TruthLensCore
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
@@ -17,7 +18,14 @@ struct SettingsView: View {
                     Link("Get a key at console.anthropic.com",
                          destination: URL(string: "https://console.anthropic.com/settings/keys")!)
                 } header: { Text("Anthropic API key") } footer: {
-                    Text("Stored only in this device's Keychain. Images are sent to Anthropic for analysis; nothing goes anywhere else.")
+                    Text("Stored only in this device's Keychain. Images are sent to Anthropic for analysis; nothing goes anywhere else. You're billed by Anthropic for what you use: \(model.pricing.summary).")
+                }
+                Section {
+                    LabeledContent("This month", value: Money.format(model.usage.thisMonth.cost))
+                    LabeledContent("All time", value: Money.format(model.usage.allTime.cost))
+                    Button("See the full breakdown") { model.tab = .stats; dismiss() }
+                } header: { Text("Your usage (estimate)") } footer: {
+                    Text("Estimated from Anthropic's published rates. Your Anthropic Console has the exact bill.")
                 }
                 Section("How it works") {
                     Label("Reads file metadata and Content Credentials on-device", systemImage: "cpu")
