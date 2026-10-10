@@ -22,9 +22,13 @@ struct SettingsView: View {
                 Section("How it works") {
                     Label("Reads file metadata and Content Credentials on-device", systemImage: "cpu")
                     Label("Claude inspects the pixels for generation tells", systemImage: "eye")
-                    Label("Web search checks the claims attached to the media", systemImage: "globe")
+                    Label("Fact Check searches independent sources for any claim you paste", systemImage: "globe")
                 }
                 .font(.subheadline)
+                Section("About") {
+                    LabeledContent("TruthLens", value: AppInfo.versionString)
+                        .accessibilityElement(children: .combine)
+                }
             }
             .formStyle(.grouped)
             .navigationTitle("Settings")
@@ -33,5 +37,16 @@ struct SettingsView: View {
         #if os(macOS)
         .frame(minWidth: 440, minHeight: 420)
         #endif
+    }
+}
+
+enum AppInfo {
+    /// "Version 0.0.1 (1)", with an "Alpha" tag while the app is pre-1.0.
+    static var versionString: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        let stage = version.hasPrefix("0.") ? " Alpha" : ""
+        return "Version \(version) (\(build))\(stage)"
     }
 }
