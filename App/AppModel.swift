@@ -29,7 +29,11 @@ final class AppModel {
         didSet { Keychain.save(apiKey) }
     }
     var showSettings = false
-    var tab: AppTab = .scan
+    var tab: AppTab = .scan {
+        didSet { if tab == .history { scanFromHistory = false; factCheck.fromHistory = false } }
+    }
+    /// True while a scan reopened from History is on screen, so the view can offer a way back to the list.
+    var scanFromHistory = false
 
     let history = HistoryModel()
     let usage = UsageTracker()
@@ -78,6 +82,7 @@ final class AppModel {
     }
 
     func reset() {
+        scanFromHistory = false
         task?.cancel()
         phase = .idle
         previewData = nil
@@ -86,6 +91,7 @@ final class AppModel {
     // MARK: Pipeline
 
     private func run(_ status: String, _ prepare: @escaping @Sendable () async throws -> PreparedMedia) {
+        scanFromHistory = false
         task?.cancel()
         phase = .analyzing(status)
         task = Task {
@@ -134,6 +140,7 @@ final class AppModel {
             guard let scan = entry.scan else { return }
             task?.cancel()
             showsScanCost = false
+            scanFromHistory = true
             previewData = history.thumbnail(for: entry.id)
             previewKind = scan.mediaKind
             phase = .done(scan.report)

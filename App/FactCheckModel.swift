@@ -38,6 +38,8 @@ final class FactCheckModel {
     private var statsID: UUID?
     /// True only right after a check, so a result reopened from History doesn't show an unrelated cost.
     var showsCost = false
+    /// True while a check reopened from History is on screen, so the view can offer a way back to the list.
+    var fromHistory = false
 
     private var task: Task<Void, Never>?
     private var followTask: Task<Void, Never>?
@@ -63,6 +65,7 @@ final class FactCheckModel {
         guard canCheck else { return }
         task?.cancel()
         phase = .checking
+        fromHistory = false
         showsCost = false
         status = "Starting…"
         let (claim, speaker, url, shot, depth) =
@@ -115,6 +118,7 @@ final class FactCheckModel {
         entryID = nil
         statsID = nil
         showsCost = false
+        fromHistory = false
         thread = []
         followUpText = ""
         claim = ""; speaker = ""; postURL = ""; screenshot = nil
@@ -186,6 +190,7 @@ final class FactCheckModel {
         entryID = entry.id
         statsID = entry.id
         showsCost = false
+        fromHistory = true
         phase = .done(fact.report)
     }
 

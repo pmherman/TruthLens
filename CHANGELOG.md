@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- **Back to History:** a result opened from History now has a **History** back button, so you can return to the list.
 - **Stats tab:** your results at a glance. Fact checks grouped as True, Mixed, False and Unclear (with a per-rating breakdown), and AI scans as AI-generated, Inconclusive and Authentic. Totals are kept separately from History, so clearing history doesn't erase them, and a revised rating updates the counts.
 - **Usage and cost:** every API call is tracked (tokens and web searches) and priced from Anthropic's published rates. Stats shows today, this month and all-time spend, plus a per-feature breakdown with the average cost of each fact check, scan, follow-up, reply and note.
 - **Cost transparency:** results show "This check cost about $0.04". Settings shows the rates next to the API key field and your monthly estimate. Stats explains how billing works (your own key, billed by Anthropic) and what each search depth can cost.

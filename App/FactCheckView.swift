@@ -88,6 +88,12 @@ struct FactCheckView: View {
             .background(Background())
             .navigationTitle("Fact Check")
             .toolbar {
+                if model.fromHistory {
+                    ToolbarItem(placement: .navigation) {
+                        Button { app.tab = .history } label: { Label("History", systemImage: "chevron.backward") }
+                            .accessibilityLabel("Back to History")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button { app.showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                 }

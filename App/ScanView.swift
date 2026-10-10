@@ -34,6 +34,12 @@ struct ScanView: View {
             .background(Background())
             .navigationTitle("AI Scan")
             .toolbar {
+                if model.scanFromHistory {
+                    ToolbarItem(placement: .navigation) {
+                        Button { model.tab = .history } label: { Label("History", systemImage: "chevron.backward") }
+                            .accessibilityLabel("Back to History")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button { model.showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
                 }
