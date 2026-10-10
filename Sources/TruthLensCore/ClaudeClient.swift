@@ -57,7 +57,8 @@ public struct ClaudeClient: Sendable {
     ///   - url: link to the original post (optional)
     ///   - screenshot: JPEG data of a screenshot of the post (optional)
     public func factCheck(claim: String, speaker: String = "", url: String = "",
-                          screenshot: Data? = nil, today: Date = .now) async throws -> FactCheckReport {
+                          screenshot: Data? = nil, depth: FactDepth = .standard, today: Date = .now,
+                          onProgress: (@Sendable (SearchProgress) -> Void)? = nil) async throws -> FactCheckReport {
         var content: [[String: Any]] = []
         if let screenshot {
             content.append(["type": "image",
@@ -67,10 +68,24 @@ public struct ClaudeClient: Sendable {
         content.append(["type": "text",
                         "text": Prompts.factCheckUser(claim: claim, speaker: speaker, url: url,
                                                       hasScreenshot: screenshot != nil, today: day)])
-        let reply = try await send(system: Prompts.factCheckSystem, content: content,
-                                   webSearchUses: 8, maxTokens: 6000)
+        let reply = try await send(system: Prompts.factCheckSystem(depth: depth), content: content,
+                                   webSearchUses: depth.maxSearches, maxTokens: 3500, onProgress: onProgress)
         let report = try Self.parseFactCheck(reply.text)
         return Self.keepRetrievedSources(report, retrieved: reply.retrievedURLs)
+    }
+
+    /// Answers a follow-up question or challenge about a finished fact check. A challenge is itself fact-checked
+    /// with web search; a revised rating is only proposed when verified sources back it.
+    public func followUp(question: String, report: FactCheckReport, history: [FollowUpTurn] = [],
+                         today: Date = .now,
+                         onProgress: (@Sendable (SearchProgress) -> Void)? = nil) async throws -> FollowUpAnswer {
+        let day = today.formatted(.iso8601.year().month().day())
+        let prompt = Prompts.followUpUser(report: report, history: history, question: question, today: day)
+        let reply = try await send(system: Prompts.followUpSystem, content: [["type": "text", "text": prompt]],
+                                   webSearchUses: 3, maxTokens: 2000, onProgress: onProgress)
+        let parsed = try Self.parseFollowUp(reply.text)
+        return Self.keepVerifiedSources(parsed, retrieved: reply.retrievedURLs,
+                                        known: Set(report.sources.map { Self.normalizedURL($0.url) }))
     }
 
     public func draftReply(for report: FactCheckReport, platform: ReplyPlatform, tone: ReplyTone) async throws -> String {
@@ -109,6 +124,23 @@ public struct ClaudeClient: Sendable {
               let data = String(text[start...end]).data(using: .utf8) else { throw ClaudeError.badResponse }
         do { return try JSONDecoder().decode(FactCheckReport.self, from: data) }
         catch { throw ClaudeError.badResponse }
+    }
+
+    static func parseFollowUp(_ text: String) throws -> FollowUpAnswer {
+        guard let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}"), start < end,
+              let data = String(text[start...end]).data(using: .utf8) else { throw ClaudeError.badResponse }
+        do { return try JSONDecoder().decode(FollowUpAnswer.self, from: data) }
+        catch { throw ClaudeError.badResponse }
+    }
+
+    /// Keeps only sources the search returned this turn (or the fact-check already cited). A proposed revision
+    /// with no verified source behind it is dropped, so insisting can't change a rating.
+    static func keepVerifiedSources(_ a: FollowUpAnswer, retrieved: Set<String>, known: Set<String>) -> FollowUpAnswer {
+        let kept = a.sources.filter {
+            let u = Self.normalizedURL($0.url)
+            return retrieved.contains(u) || known.contains(u)
+        }
+        return FollowUpAnswer(answer: a.answer, sources: kept, revision: kept.isEmpty ? nil : a.revision)
     }
 
     /// Drops any cited URL the search tool never actually returned, so a hallucinated link can't reach the user.
@@ -151,7 +183,8 @@ public struct ClaudeClient: Sendable {
         let retrievedURLs: Set<String>
     }
 
-    private func send(system: String, content: [[String: Any]], webSearchUses: Int, maxTokens: Int) async throws -> Reply {
+    private func makeRequest(system: String, content: [[String: Any]], webSearchUses: Int,
+                             maxTokens: Int, stream: Bool) throws -> URLRequest {
         guard !apiKey.isEmpty else { throw ClaudeError.missingKey }
         var body: [String: Any] = [
             "model": model,
@@ -159,6 +192,7 @@ public struct ClaudeClient: Sendable {
             "system": system,
             "messages": [["role": "user", "content": content]],
         ]
+        if stream { body["stream"] = true }
         if webSearchUses > 0 {
             body["tools"] = [["type": "web_search_20250305", "name": "web_search", "max_uses": webSearchUses]]
         }
@@ -169,14 +203,25 @@ public struct ClaudeClient: Sendable {
         req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         req.setValue("application/json", forHTTPHeaderField: "content-type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return req
+    }
+
+    private static func httpError(_ code: Int, _ data: Data) -> ClaudeError {
+        let msg = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
+            .flatMap { ($0["error"] as? [String: Any])?["message"] as? String } ?? "Unknown error"
+        return .http(code, msg)
+    }
+
+    /// With `onProgress` the response is streamed so the caller can show live search status.
+    private func send(system: String, content: [[String: Any]], webSearchUses: Int, maxTokens: Int,
+                      onProgress: (@Sendable (SearchProgress) -> Void)? = nil) async throws -> Reply {
+        let req = try makeRequest(system: system, content: content, webSearchUses: webSearchUses,
+                                  maxTokens: maxTokens, stream: onProgress != nil)
+        if let onProgress { return try await stream(req, onProgress: onProgress) }
 
         let (data, resp) = try await session.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        guard code == 200 else {
-            let msg = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])
-                .flatMap { ($0["error"] as? [String: Any])?["message"] as? String } ?? "Unknown error"
-            throw ClaudeError.http(code, msg)
-        }
+        guard code == 200 else { throw Self.httpError(code, data) }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let blocks = json["content"] as? [[String: Any]] else { throw ClaudeError.badResponse }
         // With web search the answer is spread over several text blocks; the JSON ends up in the last ones.
@@ -189,5 +234,25 @@ public struct ClaudeClient: Sendable {
             }
         }
         return Reply(text: text, retrievedURLs: urls)
+    }
+
+    private func stream(_ req: URLRequest, onProgress: @Sendable (SearchProgress) -> Void) async throws -> Reply {
+        let (bytes, resp) = try await session.bytes(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard code == 200 else {
+            var raw = Data()
+            for try await byte in bytes { raw.append(byte) }
+            throw Self.httpError(code, raw)
+        }
+        var acc = StreamAccumulator()
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            guard let data = payload.data(using: .utf8),
+                  let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            if let progress = try acc.consume(event) { onProgress(progress) }
+        }
+        guard !acc.text.isEmpty else { throw ClaudeError.badResponse }
+        return Reply(text: acc.text, retrievedURLs: acc.urls)
     }
 }

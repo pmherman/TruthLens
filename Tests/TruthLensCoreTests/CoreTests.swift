@@ -120,4 +120,61 @@ final class CoreTests: XCTestCase {
         let huge = source("https://e.com/" + String(repeating: "a", count: 600), .supports)
         XCTAssertLessThanOrEqual(CommunityNote.compose(body: "Context.", source: huge).count, huge.url.count)
     }
+
+    // MARK: Streaming and follow-ups
+
+    func testStreamAccumulatorTracksSearchesResultsAndText() throws {
+        var acc = StreamAccumulator()
+        func feed(_ json: String) throws -> SearchProgress? {
+            try acc.consume(try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any])
+        }
+        XCTAssertNil(try feed(#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":"Let me search. "}}"#))
+        XCTAssertNil(try feed(#"{"type":"content_block_start","index":1,"content_block":{"type":"server_tool_use","name":"web_search"}}"#))
+        XCTAssertNil(try feed(#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"que"}}"#))
+        XCTAssertNil(try feed(#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"ry\":\"gas prices\"}"}}"#))
+        XCTAssertEqual(try feed(#"{"type":"content_block_stop","index":1}"#), .searching("gas prices"))
+        XCTAssertEqual(try feed(#"{"type":"content_block_start","index":2,"content_block":{"type":"web_search_tool_result","content":[{"type":"web_search_result","url":"https://EIA.gov/gas/","title":"t"}]}}"#), .reading(1))
+        XCTAssertEqual(try feed(#"{"type":"content_block_start","index":3,"content_block":{"type":"text","text":""}}"#), .writing)
+        XCTAssertNil(try feed(#"{"type":"content_block_delta","index":3,"delta":{"type":"text_delta","text":"{\"ok\":1}"}}"#))
+        XCTAssertEqual(acc.text, "Let me search. {\"ok\":1}")
+        XCTAssertEqual(acc.urls, ["https://eia.gov/gas"])
+    }
+
+    func testStreamErrorEventThrows() {
+        var acc = StreamAccumulator()
+        XCTAssertThrowsError(try acc.consume(["type": "error", "error": ["message": "Overloaded"]]))
+    }
+
+    private let followUpJSON = """
+    {"answer":"a","sources":[{"title":"t","publisher":"p","url":"https://new.example/x","finding":"f","stance":"supports"}],
+     "revision":{"rating":"mostly-true","headline":"h","reason":"r"}}
+    """
+
+    func testFollowUpRevisionNeedsAVerifiedSource() throws {
+        let parsed = try ClaudeClient.parseFollowUp(followUpJSON)
+        XCTAssertEqual(parsed.revision?.rating, .mostlyTrue)
+        let unverified = ClaudeClient.keepVerifiedSources(parsed, retrieved: [], known: [])
+        XCTAssertNil(unverified.revision)
+        XCTAssertTrue(unverified.sources.isEmpty)
+        let verified = ClaudeClient.keepVerifiedSources(parsed, retrieved: ["https://new.example/x"], known: [])
+        XCTAssertEqual(verified.revision?.rating, .mostlyTrue)
+        XCTAssertEqual(verified.sources.count, 1)
+    }
+
+    func testApplyingRevisionUpdatesRatingAndMergesNewSources() {
+        let old = source("https://a.com", .contradicts), new = source("https://b.com", .supports)
+        let r = report(.false_, sources: [old]).applying(Revision(rating: .partiallyTrue, headline: "new", reason: "why"),
+                                                         newSources: [old, new])
+        XCTAssertEqual(r.rating, .partiallyTrue)
+        XCTAssertEqual(r.headline, "new")
+        XCTAssertEqual(r.sources.map(\.url), ["https://a.com", "https://b.com"])
+        XCTAssertTrue(r.caveats?.contains("Revised after follow-up") == true)
+    }
+
+    func testDepthLevelsGetFasterAsTheyGetShallower() {
+        XCTAssertLessThan(FactDepth.quick.maxSearches, FactDepth.standard.maxSearches)
+        XCTAssertLessThan(FactDepth.standard.maxSearches, FactDepth.thorough.maxSearches)
+        XCTAssertTrue(Prompts.factCheckSystem(depth: .quick).contains("at most 3 web searches"))
+    }
 }
+

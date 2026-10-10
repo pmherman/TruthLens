@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Search depth:** Quick (up to 3 searches), Standard (5) or Thorough (8) on the Fact Check tab. Fewer searches is faster.
+- **Live progress:** the fact check now streams, showing what it's searching and reading, with a **Cancel** button.
+- **Back to results:** editing a claim no longer throws away the last result. Use "Back to previous results" (or the toolbar button) to return to it without searching again.
+- **Follow-ups and challenges:** ask questions about a result or challenge it. Challenges are fact-checked with fresh searches, and the rating only changes if verified sources support it. Accept a suggested revision with one tap and it updates the rating, headline and sources used by replies and Community Notes.
+
+### Changed
+- Fact-check answers are tighter (shorter explanation, up to 5 sources), which cuts the time spent writing the response.
+
 ## 0.0.3 — Alpha (2026-10-10)
 
 ### Added

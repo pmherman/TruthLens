@@ -125,3 +125,62 @@ public struct FactCheckReport: Codable, Sendable {
     /// Other claims in the post, data-freshness limits, or what would change the rating.
     public let caveats: String?
 }
+
+/// How hard the fact-checker searches. Fewer searches is faster; more is more thorough.
+public enum FactDepth: String, CaseIterable, Identifiable, Sendable {
+    case quick, standard, thorough
+    public var id: String { rawValue }
+    public var title: String { rawValue.capitalized }
+    public var maxSearches: Int {
+        switch self { case .quick: 3; case .standard: 5; case .thorough: 8 }
+    }
+    public var minSources: Int {
+        switch self { case .quick: 2; case .standard: 3; case .thorough: 3 }
+    }
+    public var blurb: String {
+        switch self {
+        case .quick: "Up to 3 searches. Fastest."
+        case .standard: "Up to 5 searches. Balanced."
+        case .thorough: "Up to 8 searches. Slowest, most complete."
+        }
+    }
+}
+
+/// Live status while the model searches, so a long check doesn't look frozen.
+public enum SearchProgress: Sendable, Equatable {
+    case searching(String)
+    case reading(Int)
+    case writing
+}
+
+/// A proposed change to the rating after a follow-up or challenge, backed by retrieved sources.
+public struct Revision: Codable, Hashable, Sendable {
+    public let rating: ClaimRating
+    public let headline: String
+    public let reason: String
+}
+
+public struct FollowUpAnswer: Codable, Sendable {
+    public let answer: String
+    public let sources: [FactSource]
+    public let revision: Revision?
+}
+
+public struct FollowUpTurn: Sendable, Hashable {
+    public let question: String
+    public let answer: String
+    public init(question: String, answer: String) { self.question = question; self.answer = answer }
+}
+
+extension FactCheckReport {
+    /// The report with a revised rating and headline, plus any new sources appended.
+    public func applying(_ revision: Revision, newSources: [FactSource]) -> FactCheckReport {
+        let known = Set(sources.map(\.id))
+        return FactCheckReport(claim: claim, rating: revision.rating, headline: revision.headline,
+                               explanation: explanation, evidence: evidence,
+                               sources: sources + newSources.filter { !known.contains($0.id) },
+                               caveats: ["Revised after follow-up: \(revision.reason)", caveats]
+                                   .compactMap { $0 }.joined(separator: " "))
+    }
+}
+
