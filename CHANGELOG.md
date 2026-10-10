@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- **Listen to replies:** a Listen button (with pause, resume and stop) reads a drafted reply or Community Note aloud. Choose a speed (slow, normal, fast) and a voice. It uses Apple's on-device voices, so it's free, works offline, and nothing is sent anywhere. Links, markdown and emoji are skipped so it reads naturally.
 - **History tab:** every AI scan and fact check is saved with a reduced-quality image, the claim, the result and the whole follow-up thread. Tap an item to reopen it in its own tab and keep going (follow-ups, replies, Community Notes).
 - **Storage meter:** History shows how much space it uses and offers **Clear history** in one tap. A switch turns saving off.
 - **Protect items:** protected items (lock icon) are kept when you clear history or bulk-delete. Delete one item at a time from its menu, or use **Select** to protect or delete several at once. Deleting a protected item always asks first.

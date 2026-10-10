@@ -75,6 +75,7 @@ struct CommunityNoteSheet: View {
                         Label(copied ? "Copied" : "Copy note + link", systemImage: copied ? "checkmark" : "doc.on.doc")
                     }.disabled(body_.isEmpty || over)
                     if !body_.isEmpty && !over { ShareLink(item: composed) }
+                    ListenControls(text: body_)
                 } footer: {
                     Text("Paste it into Meta: open the post's ••• menu and choose Write community note.")
                 }

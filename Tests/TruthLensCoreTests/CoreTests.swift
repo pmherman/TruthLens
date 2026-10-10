@@ -278,5 +278,16 @@ final class CoreTests: XCTestCase {
         let thumb = try XCTUnwrap(MediaPreparer.thumbnail(from: original, maxPixel: 480))
         XCTAssertLessThan(thumb.count, original.count / 3)
     }
+
+    // MARK: Spoken text
+
+    func testSpokenTextDropsUrlsMarkdownAndEmoji() {
+        XCTAssertEqual(SpokenText.clean("Gas is **down** 🚗 per https://eia.gov/gas?x=1 #prices"), "Gas is down per link prices")
+    }
+
+    func testSpokenTextKeepsLineBreaksAsPauses() {
+        XCTAssertEqual(SpokenText.clean("First.   \n\n  Second.\t Third"), "First.\nSecond. Third")
+        XCTAssertEqual(SpokenText.clean("   \n  "), "")
+    }
 }
 

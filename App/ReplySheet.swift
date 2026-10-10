@@ -60,6 +60,7 @@ struct ReplySheet: View {
                         Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                     }.disabled(text.isEmpty || over)
                     if !text.isEmpty { ShareLink(item: text) }
+                    ListenControls(text: text)
                 }
             }
             .formStyle(.grouped)
