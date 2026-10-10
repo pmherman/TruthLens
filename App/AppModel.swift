@@ -18,6 +18,26 @@ struct PickedMovie: Transferable {
 
 enum AppTab: Hashable { case scan, factCheck, history, stats }
 
+/// What writes drafts (replies, notes) right now.
+enum WritingEngine {
+    case claude, onDevice, none
+
+    var label: String {
+        switch self {
+        case .claude: "Written by Claude (uses your API key)"
+        case .onDevice: "Written on this device: free and private, but check the facts before posting"
+        case .none: "Unavailable"
+        }
+    }
+}
+
+enum WritingError: LocalizedError {
+    case noEngine
+    var errorDescription: String? {
+        "Add an Anthropic API key in Settings, or turn on Apple Intelligence (macOS 26 / iOS 26 or later), to draft text."
+    }
+}
+
 @MainActor @Observable
 final class AppModel {
     enum Phase { case idle, analyzing(String), done(AnalysisReport), failed(String) }
@@ -29,6 +49,19 @@ final class AppModel {
         didSet { Keychain.save(apiKey) }
     }
     var showSettings = false
+
+    /// Use the free on-device model for replies and notes even when an API key is set.
+    var preferOnDevice = UserDefaults.standard.bool(forKey: "preferOnDevice") {
+        didSet { UserDefaults.standard.set(preferOnDevice, forKey: "preferOnDevice") }
+    }
+    /// Send images to Claude for visual analysis (needs a key). Off keeps scans to on-device file checks.
+    var cloudScan = UserDefaults.standard.object(forKey: "cloudScan") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(cloudScan, forKey: "cloudScan") }
+    }
+    private(set) var onDevice = OnDevice.status
+    private let localWriter = OnDeviceWriter()
+    private var lastPrepared: PreparedMedia?
+
     var tab: AppTab = .scan {
         didSet { if tab == .history { scanFromHistory = false; factCheck.fromHistory = false } }
     }
@@ -58,8 +91,57 @@ final class AppModel {
         return c
     }
 
+    func refreshOnDevice() { onDevice = OnDevice.status }
+
+    /// Replies and notes: on-device when preferred or when there's no key, Claude otherwise.
+    var writingEngine: WritingEngine {
+        if preferOnDevice && onDevice.isAvailable { return .onDevice }
+        if hasKey { return .claude }
+        return onDevice.isAvailable ? .onDevice : .none
+    }
+
+    /// Follow-ups: Claude whenever there's a key, because only it can verify a challenge against sources.
+    var followUpEngine: WritingEngine {
+        hasKey ? .claude : (onDevice.isAvailable ? .onDevice : .none)
+    }
+
     /// Rates shown to the user, for the model the app calls.
     var pricing: ModelPricing { ModelPricing.forModel(client.model) }
+
+    // MARK: Drafting (routes to Claude or the on-device model)
+
+    func draftReply(for report: AnalysisReport, platform: ReplyPlatform, tone: ReplyTone) async throws -> String {
+        switch writingEngine {
+        case .claude: try await client.draftReply(for: report, platform: platform, tone: tone)
+        case .onDevice: try await localWriter.draftReply(for: report, platform: platform, tone: tone)
+        case .none: throw WritingError.noEngine
+        }
+    }
+
+    func draftReply(for report: FactCheckReport, platform: ReplyPlatform, tone: ReplyTone) async throws -> String {
+        switch writingEngine {
+        case .claude: try await client.draftReply(for: report, platform: platform, tone: tone)
+        case .onDevice: try await localWriter.draftReply(for: report, platform: platform, tone: tone)
+        case .none: throw WritingError.noEngine
+        }
+    }
+
+    func draftCommunityNote(for report: FactCheckReport, source: FactSource) async throws -> String {
+        switch writingEngine {
+        case .claude: try await client.draftCommunityNote(for: report, source: source)
+        case .onDevice: try await localWriter.draftCommunityNote(for: report, source: source)
+        case .none: throw WritingError.noEngine
+        }
+    }
+
+    func followUp(question: String, report: FactCheckReport, history: [FollowUpTurn],
+                  onProgress: @escaping @Sendable (SearchProgress) -> Void) async throws -> FollowUpAnswer {
+        switch followUpEngine {
+        case .claude: try await client.followUp(question: question, report: report, history: history, onProgress: onProgress)
+        case .onDevice: try await localWriter.followUp(question: question, report: report, history: history)
+        case .none: throw WritingError.noEngine
+        }
+    }
 
     // MARK: Intake
 
@@ -83,6 +165,7 @@ final class AppModel {
 
     func reset() {
         scanFromHistory = false
+        lastPrepared = nil
         task?.cancel()
         phase = .idle
         previewData = nil
@@ -104,32 +187,45 @@ final class AppModel {
         }
     }
 
-    private func analyze(_ prepared: PreparedMedia) {
-        guard hasKey else {
-            phase = .failed(ClaudeError.missingKey.localizedDescription)
-            showSettings = true
-            return
-        }
+    /// Scans with Claude when there's a key (and cloud scanning is on); otherwise runs the on-device file checks only.
+    private func analyze(_ prepared: PreparedMedia, forceCloud: Bool = false) {
+        lastPrepared = prepared
         previewData = prepared.frames.first
         previewKind = prepared.kind
         showsScanCost = false
+        task?.cancel()
+
+        guard hasKey && (cloudScan || forceCloud) else {
+            finishScan(MetadataReport.make(signals: prepared.signals, kind: prepared.kind), prepared, billable: false)
+            return
+        }
         phase = .analyzing("Scanning…")
         let client = client
-        task?.cancel()
         task = Task {
             do {
                 let report = try await client.analyze(prepared)
-                if !Task.isCancelled {
-                    phase = .done(report)
-                    let id = history.recordScan(report: report, kind: prepared.kind, image: prepared.frames.first) ?? UUID()
-                    usage.recordCheck(id: id, kind: .scan, outcome: report.verdict.rawValue)
-                    showsScanCost = true
-                }
+                if !Task.isCancelled { finishScan(report, prepared, billable: true) }
             } catch {
                 if !Task.isCancelled { phase = .failed(error.localizedDescription) }
             }
         }
     }
+
+    private func finishScan(_ report: AnalysisReport, _ prepared: PreparedMedia, billable: Bool) {
+        phase = .done(report)
+        let id = history.recordScan(report: report, kind: prepared.kind, image: prepared.frames.first) ?? UUID()
+        usage.recordCheck(id: id, kind: .scan, outcome: report.verdict.rawValue)
+        showsScanCost = billable
+    }
+
+    /// Re-runs the current file with Claude's visual analysis, e.g. after adding an API key.
+    func runVisualAnalysis() {
+        guard hasKey else { showSettings = true; return }
+        guard let prepared = lastPrepared else { return }
+        analyze(prepared, forceCloud: true)
+    }
+
+    var canRunVisualAnalysis: Bool { lastPrepared != nil }
 
     // MARK: History
 

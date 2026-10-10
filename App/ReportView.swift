@@ -3,7 +3,8 @@ import TruthLensCore
 
 extension AnalysisReport {
     var tint: Color {
-        switch aiScore {
+        if isMetadataOnly { return verdict == .aiGenerated ? .red : .gray }
+        return switch aiScore {
         case ..<30: .green
         case 30..<60: .yellow
         case 60..<80: .orange
@@ -32,7 +33,7 @@ struct ReportView: View {
 
     private var header: some View {
         HStack(spacing: 18) {
-            ScoreRing(score: report.aiScore, tint: report.tint)
+            if report.isMetadataOnly { FileCheckBadge(tint: report.tint) } else { ScoreRing(score: report.aiScore, tint: report.tint) }
             VStack(alignment: .leading, spacing: 6) {
                 Text(report.verdict.title).font(.title2.bold())
                 Text(report.headline).font(.subheadline).foregroundStyle(.secondary)
@@ -79,6 +80,23 @@ struct ReportView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()
+    }
+}
+
+/// Stands in for the score ring when only the file's metadata was checked: there is no score to show.
+struct FileCheckBadge: View {
+    let tint: Color
+    var body: some View {
+        ZStack {
+            Circle().stroke(.quaternary, lineWidth: 10)
+            VStack(spacing: 2) {
+                Image(systemName: "doc.text.magnifyingglass").font(.title2).foregroundStyle(tint)
+                Text("File check").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 92, height: 92)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Metadata check only, no score")
     }
 }
 

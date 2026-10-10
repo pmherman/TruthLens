@@ -46,6 +46,13 @@ public struct SourceLink: Codable, Hashable, Identifiable, Sendable {
     public let url: String
 }
 
+/// How a scan result was produced. Older saved results have no value, which means a full analysis.
+public enum AnalysisBasis: String, Codable, Sendable {
+    case full
+    /// Only the on-device file checks ran (no model), so there is no AI score.
+    case metadataOnly
+}
+
 public struct AnalysisReport: Codable, Sendable {
     /// 0 (certainly real) ... 100 (certainly AI)
     public let aiScore: Int
@@ -53,6 +60,9 @@ public struct AnalysisReport: Codable, Sendable {
     public let headline: String
     public let reasons: [Reason]
     public let risks: [RiskFlag]
+    public var basis: AnalysisBasis? = nil
+
+    public var isMetadataOnly: Bool { basis == .metadataOnly }
 }
 
 // MARK: - Fact checking

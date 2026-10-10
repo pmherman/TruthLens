@@ -2,6 +2,7 @@ import SwiftUI
 import TruthLensCore
 
 struct ReplySheet: View {
+    @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     /// Produces a draft for the chosen platform and tone (scan or fact-check).
     let generate: (ReplyPlatform, ReplyTone) async throws -> String
@@ -20,7 +21,10 @@ struct ReplySheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Where are you replying?") {
+                if app.writingEngine == .none {
+                    Section { Label(WritingError.noEngine.errorDescription ?? "", systemImage: "info.circle").font(.subheadline) }
+                }
+                Section {
                     Picker("Platform", selection: $platformRaw) {
                         ForEach(ReplyPlatform.allCases) { p in
                             Text("\(p.title) · \(p.characterLimit.formatted()) chars").tag(p.rawValue)
@@ -29,7 +33,7 @@ struct ReplySheet: View {
                     Picker("Tone", selection: $toneRaw) {
                         ForEach(ReplyTone.allCases) { Text($0.title).tag($0.rawValue) }
                     }
-                }
+                } header: { Text("Where are you replying?") } footer: { Text(app.writingEngine.label) }
                 Section {
                     TextEditor(text: $text)
                         .frame(minHeight: 160)
@@ -52,7 +56,7 @@ struct ReplySheet: View {
                 Section {
                     Button { Task { await draft() } } label: {
                         Label(text.isEmpty ? "Generate" : "Regenerate", systemImage: "sparkles")
-                    }.disabled(busy)
+                    }.disabled(busy || app.writingEngine == .none)
                     Button {
                         Clipboard.copy(text); copied = true
                         Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }

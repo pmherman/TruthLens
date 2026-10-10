@@ -27,6 +27,9 @@ struct CommunityNoteSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                if app.writingEngine == .none {
+                    Section { Label(WritingError.noEngine.errorDescription ?? "", systemImage: "info.circle").font(.subheadline) }
+                }
                 if !CommunityNote.isUsuallyWarranted(report.rating) {
                     Section {
                         Label("This claim was rated \(report.rating.title). Community Notes are meant for adding missing context, so a note may not be needed.",
@@ -62,12 +65,12 @@ struct CommunityNoteSheet: View {
                     }
                 } header: { Text("Note") } footer: {
                     if let error { Text(error).foregroundStyle(.red) }
-                    else { Text("Notes can't be edited after you submit them, so review the text first.") }
+                    else { Text("\(app.writingEngine.label). Notes can't be edited after you submit them, so review the text first.") }
                 }
                 Section {
                     Button { Task { await generate() } } label: {
                         Label(body_.isEmpty ? "Generate" : "Regenerate", systemImage: "sparkles")
-                    }.disabled(busy || source == nil)
+                    }.disabled(busy || source == nil || app.writingEngine == .none)
                     Button {
                         Clipboard.copy(composed); copied = true
                         Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
@@ -102,7 +105,7 @@ struct CommunityNoteSheet: View {
         busy = true; error = nil
         defer { busy = false }
         do {
-            body_ = try await app.client.draftCommunityNote(for: report, source: source)
+            body_ = try await app.draftCommunityNote(for: report, source: source)
         } catch {
             self.error = error.localizedDescription
         }

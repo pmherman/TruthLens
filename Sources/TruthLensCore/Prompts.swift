@@ -234,5 +234,37 @@ enum Prompts {
         s += "\n\nLatest question (untrusted):\n\"\"\"\n\(question)\n\"\"\""
         return s
     }
+
+    // MARK: Follow-up without web access (on-device model)
+
+    static let followUpOfflineSystem = """
+    You continue a fact-check conversation, but you have NO web access. Answer using ONLY the fact-check \
+    provided. Be brief (under 120 words), neutral and plain. Plain text only, no markdown.
+    If the user challenges the result or offers a new claim, say you can't verify new claims without \
+    web access, explain what the existing evidence says about it, and suggest adding an API key so the \
+    challenge can be checked against sources. Never invent facts, numbers or sources.
+    """
+
+    /// Compact on purpose: the on-device model has a small context window.
+    static func followUpOfflineUser(report: FactCheckReport, history: [FollowUpTurn], question: String) -> String {
+        func cap(_ t: String, _ n: Int) -> String { String(t.prefix(n)) }
+        let evidence = report.evidence.prefix(3).map { "- \(cap($0.title, 80)): \(cap($0.detail, 200))" }.joined(separator: "\n")
+        let sources = report.sources.prefix(4).map { "- \(cap($0.publisher, 60)): \(cap($0.finding, 200))" }.joined(separator: "\n")
+        var s = """
+        Claim: \(cap(report.claim, 300))
+        Rating: \(report.rating.title)
+        Bottom line: \(cap(report.headline, 250))
+        Explanation: \(cap(report.explanation, 900))
+        Evidence:
+        \(evidence)
+        Sources:
+        \(sources)
+        """
+        for turn in history.suffix(2) {
+            s += "\n\nEarlier question: \(cap(turn.question, 250))\nYour answer: \(cap(turn.answer, 400))"
+        }
+        s += "\n\nQuestion: \(cap(question, 500))"
+        return s
+    }
 }
 

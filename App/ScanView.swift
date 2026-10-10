@@ -21,6 +21,7 @@ struct ScanView: View {
                     case .failed(let message): ErrorCard(message: message)
                     case .done(let report):
                         ReportView(report: report) { showReply = true }
+                        if report.isMetadataOnly && model.previewKind != .audio { MetadataOnlyCard() }
                         if model.showsScanCost { CostNote(cost: model.usage.lastCost[.scan]) }
                     }
                     Text("AI detection is probabilistic. Treat results as evidence, not proof.")
@@ -53,7 +54,7 @@ struct ScanView: View {
         .sheet(isPresented: $showReply) {
             if let report = model.report {
                 ReplySheet { platform, tone in
-                    try await model.client.draftReply(for: report, platform: platform, tone: tone)
+                    try await model.draftReply(for: report, platform: platform, tone: tone)
                 }
             }
         }
@@ -151,5 +152,35 @@ struct ErrorCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(18)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+/// Shown under a metadata-only result: says what was and wasn't checked, and how to get the full analysis.
+struct MetadataOnlyCard: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("File check only", systemImage: "doc.text.magnifyingglass").font(.headline)
+            Text(app.hasKey
+                 ? "Visual analysis is off for this scan, so only the file's metadata was checked on this device. Run it to have Claude inspect the pixels. This sends the image to Anthropic."
+                 : "Only the file's metadata was checked, on this device and for free. A visual analysis by Claude can inspect the pixels for generation tells, but it needs an Anthropic API key.")
+                .font(.subheadline).foregroundStyle(.secondary)
+            if app.hasKey {
+                if app.canRunVisualAnalysis {
+                    Button { app.runVisualAnalysis() } label: {
+                        Label("Run visual analysis", systemImage: "eye").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                }
+            } else {
+                Button { app.showSettings = true } label: {
+                    Label("Add an API key", systemImage: "key.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
     }
 }

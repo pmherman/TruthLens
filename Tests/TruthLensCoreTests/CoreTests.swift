@@ -356,5 +356,61 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(ledger.load().first?.id, rec.id)
         XCTAssertEqual(ledger.load().first?.outcome, "false")
     }
+
+    // MARK: Keyless (on-device) mode
+
+    func testMetadataOnlyReportReportsHardMarkersAndNeverInventsAScore() {
+        let hit = MetadataSignal(label: "AI marker found: Midjourney", detail: "d", strength: .strongAI)
+        let ai = MetadataReport.make(signals: [hit], kind: .image)
+        XCTAssertEqual(ai.verdict, .aiGenerated)
+        XCTAssertTrue(ai.isMetadataOnly)
+        XCTAssertEqual(ai.reasons.first?.indicatesAI, true)
+
+        let cam = MetadataSignal(label: "Camera EXIF present", detail: "d", strength: .weakAuthentic)
+        let ok = MetadataReport.make(signals: [cam], kind: .image)
+        XCTAssertEqual(ok.verdict, .uncertain)          // metadata can't prove an image is real
+        XCTAssertTrue(ok.headline.contains("doesn't prove"))
+        XCTAssertEqual(ok.reasons.first?.indicatesAI, false)
+
+        let audio = MetadataReport.make(signals: [], kind: .audio)
+        XCTAssertEqual(audio.verdict, .uncertain)
+    }
+
+    func testOlderSavedScansWithoutABasisCountAsFullAnalyses() throws {
+        let json = #"{"aiScore":70,"verdict":"likelyAI","headline":"h","reasons":[],"risks":[]}"#
+        let r = try JSONDecoder().decode(AnalysisReport.self, from: Data(json.utf8))
+        XCTAssertNil(r.basis)
+        XCTAssertFalse(r.isMetadataOnly)
+    }
+
+    func testMetadataOnlyBasisSurvivesSavingAndShowsInHistory() throws {
+        let report = MetadataReport.make(signals: [], kind: .image)
+        let entry = HistoryEntry(kind: .scan, hasThumbnail: false, scan: ScanRecord(mediaKind: .image, report: report))
+        let back = try JSONDecoder().decode(HistoryEntry.self, from: JSONEncoder().encode(entry))
+        XCTAssertTrue(back.scan?.report.isMetadataOnly == true)
+        XCTAssertTrue(back.badge.hasSuffix("metadata only"))
+    }
+
+    func testOnDeviceStatusAlwaysExplainsItself() {
+        let status = OnDevice.status
+        if case .unavailable(let why) = status { XCTAssertFalse(why.isEmpty) }
+        XCTAssertFalse(status.message.isEmpty)
+    }
+
+    func testOfflineFollowUpPromptStaysSmallForTheOnDeviceContextWindow() {
+        let long = String(repeating: "word ", count: 2_000)
+        let src = FactSource(title: "t", publisher: "p", url: "https://e.com", finding: "f", stance: .supports)
+        let r = FactCheckReport(claim: "c", rating: .false_, headline: "h", explanation: long,
+                                evidence: [], sources: [src, src, src, src, src], caveats: nil)
+        let turns = (0..<5).map { _ in FollowUpTurn(question: long, answer: long) }
+        let prompt = Prompts.followUpOfflineUser(report: r, history: turns, question: long)
+        XCTAssertLessThan(prompt.count, 4_500)   // roughly 1,100 tokens, well inside a 4,096-token window
+    }
+
+    func testOnDeviceNoteDropsStraySourceTags() {
+        XCTAssertEqual(OnDeviceWriter.withoutSourceTags("Prices fell 4%. [Source: EIA Gasoline Update]"), "Prices fell 4%.")
+        XCTAssertEqual(OnDeviceWriter.withoutSourceTags("Prices fell 4% (source: EIA)."), "Prices fell 4%.")
+        XCTAssertEqual(OnDeviceWriter.withoutSourceTags("According to the EIA, prices fell."), "According to the EIA, prices fell.")
+    }
 }
 

@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Added
+- **Works without an API key (hybrid mode).** The key is now optional. Without one you still get: file metadata and Content Credentials checks on AI Scan, History, Stats, audio playback, and replies, Community Notes and follow-up answers written by Apple's on-device model (needs Apple Intelligence on macOS 26 / iOS 26 or later). It's free and private, with simpler writing than Claude, no web access, and it may decline some political topics.
+- **Keyless scans:** a "File check" result reports hard AI markers and camera data honestly and never invents an AI score. A "Run visual analysis" button upgrades it when you add a key.
+- **What needs a key is clearly labelled:** Fact Check (it must search the web), visual AI analysis, and checking challenges against sources.
+- **New settings:** use the on-device model for replies and notes even with a key (saves money), and turn off visual analysis to keep scans on this device so no image is sent to Anthropic.
+- The app no longer forces the Settings screen open at launch.
 - **Back to History:** a result opened from History now has a **History** back button, so you can return to the list.
 - **Stats tab:** your results at a glance. Fact checks grouped as True, Mixed, False and Unclear (with a per-rating breakdown), and AI scans as AI-generated, Inconclusive and Authentic. Totals are kept separately from History, so clearing history doesn't erase them, and a revised rating updates the counts.
 - **Usage and cost:** every API call is tracked (tokens and web searches) and priced from Anthropic's published rates. Stats shows today, this month and all-time spend, plus a per-feature breakdown with the average cost of each fact check, scan, follow-up, reply and note.

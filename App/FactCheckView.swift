@@ -53,6 +53,25 @@ extension Stance {
     }
 }
 
+/// Fact checks are the one feature that can't run without a cloud model: it must search the web for evidence.
+struct KeyRequiredCard: View {
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Fact checks need an API key", systemImage: "key.fill").font(.headline)
+            Text("Checking a claim means searching the web for independent sources and weighing them, which takes a cloud model. TruthLens uses your own Anthropic API key for that, and bills nothing itself. Everything else works without one: file checks, History, Stats, audio, and replies written on this device.")
+                .font(.subheadline).foregroundStyle(.secondary)
+            Button { app.showSettings = true } label: {
+                Label("Add an API key", systemImage: "key.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+}
+
 struct FactCheckView: View {
     @Environment(AppModel.self) private var app
     private var model: FactCheckModel { app.factCheck }
@@ -67,6 +86,7 @@ struct FactCheckView: View {
                 VStack(spacing: 20) {
                     switch model.phase {
                     case .idle, .failed:
+                        if !app.hasKey { KeyRequiredCard() }
                         inputCard
                         if case .failed(let message) = model.phase { ErrorCard(message: message) }
                     case .checking:
@@ -114,7 +134,7 @@ struct FactCheckView: View {
         .sheet(isPresented: $showReply) {
             if let report = model.report {
                 ReplySheet { platform, tone in
-                    try await app.client.draftReply(for: report, platform: platform, tone: tone)
+                    try await app.draftReply(for: report, platform: platform, tone: tone)
                 }
             }
         }
@@ -175,7 +195,7 @@ struct FactCheckView: View {
                 Label("Check this claim", systemImage: "checkmark.seal.fill").frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
-            .disabled(!model.canCheck || model.isChecking)
+            .disabled(!model.canCheck || model.isChecking || !app.hasKey)
 
             if model.lastReport != nil && !model.isChecking {
                 Button { model.backToResults() } label: {
@@ -364,7 +384,7 @@ struct FollowUpSection: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
                         ForEach(suggestions, id: \.self) { text in
-                            Button(text) { model.ask(text, using: app.client) }
+                            Button(text) { model.ask(text, using: app) }
                                 .buttonStyle(.bordered).controlSize(.small)
                         }
                     }
@@ -375,19 +395,28 @@ struct FollowUpSection: View {
                 TextField("e.g. “But I read that prices are up 5%…”", text: $model.followUpText, axis: .vertical)
                     .lineLimit(1...4)
                     .textFieldStyle(.roundedBorder)
-                    .onSubmit { model.ask(model.followUpText, using: app.client) }
+                    .onSubmit { model.ask(model.followUpText, using: app) }
                 Button {
-                    model.ask(model.followUpText, using: app.client)
+                    model.ask(model.followUpText, using: app)
                 } label: {
                     Label("Ask", systemImage: "arrow.up.circle.fill").labelStyle(.iconOnly).font(.title2)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.tint)
-                .disabled(model.followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isAsking)
+                .disabled(model.followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isAsking || app.followUpEngine == .none)
                 .accessibilityLabel("Ask")
             }
-            Text("Challenges are fact-checked, not taken on faith. The rating only changes if verified sources support it.")
-                .font(.footnote).foregroundStyle(.secondary)
+            Group {
+                switch app.followUpEngine {
+                case .claude:
+                    Text("Challenges are fact-checked, not taken on faith. The rating only changes if verified sources support it.")
+                case .onDevice:
+                    Text("Answered on this device from this result only. It can't search the web, so it can't verify new claims. Add an API key to check challenges against sources.")
+                case .none:
+                    Text("Follow-ups need an Anthropic API key or Apple Intelligence.")
+                }
+            }
+            .font(.footnote).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card()

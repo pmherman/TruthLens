@@ -16,7 +16,16 @@ Both can draft replies sized to each platform's character limit.
 ./setup.sh      # needs Xcode + Homebrew; generates the project and opens it
 ```
 Then choose **My Mac** or your device, set your Team under *Signing & Capabilities*, press **⌘R**.
-First launch asks for your Anthropic API key (stored in the Keychain).
+An Anthropic API key is optional (Settings → stored in the Keychain). See *With and without a key* below.
+
+## With and without a key
+| | No key | With a key |
+|---|---|---|
+| AI Scan | File metadata / Content Credentials check (no score is invented) | + Claude inspects the pixels |
+| Fact Check | Not available (needs web search) | Searches independent sources, rates the claim |
+| Replies, Community Notes | Apple Intelligence on-device (macOS 26 / iOS 26+, free, private, simpler writing) | Claude, or the on-device model if you prefer |
+| Follow-ups | Answered on-device from the result only | Challenges are fact-checked with fresh searches |
+| History, Stats, audio playback | Yes | Yes |
 
 ## How it works
 

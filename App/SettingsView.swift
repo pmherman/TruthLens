@@ -17,8 +17,17 @@ struct SettingsView: View {
                         #endif
                     Link("Get a key at console.anthropic.com",
                          destination: URL(string: "https://console.anthropic.com/settings/keys")!)
-                } header: { Text("Anthropic API key") } footer: {
-                    Text("Stored only in this device's Keychain. Images are sent to Anthropic for analysis; nothing goes anywhere else. You're billed by Anthropic for what you use: \(model.pricing.summary).")
+                } header: { Text("Anthropic API key (optional)") } footer: {
+                    Text("A key unlocks fact checks, visual AI analysis and checking challenges against sources. It's stored only in this device's Keychain. When used, claims and images are sent to Anthropic, which bills you directly: \(model.pricing.summary).")
+                }
+                Section {
+                    LabeledContent("Apple Intelligence", value: model.onDevice.isAvailable ? "Available" : "Not available")
+                    Toggle("Use on-device model for replies and notes", isOn: $model.preferOnDevice)
+                        .disabled(!model.onDevice.isAvailable)
+                    Toggle("Visual analysis with Claude", isOn: $model.cloudScan)
+                        .disabled(!model.hasKey)
+                } header: { Text("On this device (free)") } footer: {
+                    Text("\(model.onDevice.message) The on-device model writes simpler replies than Claude, can't search the web, and may decline some political topics. Turn off visual analysis to keep scans on this device: only file metadata is checked and no image is sent to Anthropic.")
                 }
                 Section {
                     LabeledContent("This month", value: Money.format(model.usage.thisMonth.cost))
@@ -27,10 +36,16 @@ struct SettingsView: View {
                 } header: { Text("Your usage (estimate)") } footer: {
                     Text("Estimated from Anthropic's published rates. Your Anthropic Console has the exact bill.")
                 }
-                Section("How it works") {
-                    Label("Reads file metadata and Content Credentials on-device", systemImage: "cpu")
+                Section("What works without a key") {
+                    Label("File metadata and Content Credentials checks", systemImage: "cpu")
+                    Label("History, Stats and audio playback", systemImage: "clock.arrow.circlepath")
+                    Label("Replies, notes and follow-up answers on Apple Intelligence", systemImage: "apple.intelligence")
+                }
+                .font(.subheadline)
+                Section("What needs a key") {
                     Label("Claude inspects the pixels for generation tells", systemImage: "eye")
-                    Label("Fact Check searches independent sources for any claim you paste", systemImage: "globe")
+                    Label("Fact Check searches independent sources for any claim", systemImage: "globe")
+                    Label("Challenges to a result are checked against sources", systemImage: "bubble.left.and.text.bubble.right")
                 }
                 .font(.subheadline)
                 Section("About") {
@@ -48,6 +63,7 @@ struct SettingsView: View {
             .formStyle(.grouped)
             .navigationTitle("Settings")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .onAppear { model.refreshOnDevice() }
         }
         #if os(macOS)
         .frame(minWidth: 440, minHeight: 420)

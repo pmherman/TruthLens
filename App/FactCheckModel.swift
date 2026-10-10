@@ -126,7 +126,7 @@ final class FactCheckModel {
 
     // MARK: Follow-ups and challenges
 
-    func ask(_ question: String, using client: ClaudeClient) {
+    func ask(_ question: String, using app: AppModel) {
         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let report, !q.isEmpty, !isAsking else { return }
         followUpText = ""
@@ -138,7 +138,7 @@ final class FactCheckModel {
         thread.append(exchange)
         followTask = Task {
             do {
-                let answer = try await client.followUp(question: q, report: report, history: history) { [weak self] progress in
+                let answer = try await app.followUp(question: q, report: report, history: history) { [weak self] progress in
                     Task { @MainActor in self?.setState(id, .asking(Self.describe(progress))) }
                 }
                 if !Task.isCancelled { setState(id, .answered(answer)); persist() }

@@ -61,7 +61,9 @@ public struct HistoryEntry: Codable, Identifiable, Sendable {
     /// Short result label, e.g. "Likely AI · 82" or "Partially true".
     public var badge: String {
         switch kind {
-        case .scan: scan.map { "\($0.report.verdict.title) · \($0.report.aiScore)" } ?? ""
+        case .scan:
+            scan.map { $0.report.isMetadataOnly ? "\($0.report.verdict.title) · metadata only"
+                                                 : "\($0.report.verdict.title) · \($0.report.aiScore)" } ?? ""
         case .factCheck: fact?.report.rating.title ?? ""
         }
     }

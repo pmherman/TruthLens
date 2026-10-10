@@ -20,6 +20,5 @@ struct RootView: View {
                 .tag(AppTab.stats)
         }
         .sheet(isPresented: $model.showSettings) { SettingsView() }
-        .task { if !model.hasKey { model.showSettings = true } }
     }
 }
