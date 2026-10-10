@@ -1,0 +1,173 @@
+import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
+import TruthLensCore
+
+struct ContentView: View {
+    @Environment(AppModel.self) private var model
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var importing = false
+    @State private var targeted = false
+    @State private var showContext = false
+    @State private var showReply = false
+
+    var body: some View {
+        @Bindable var model = model
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    dropZone
+                    contextCard
+                    switch model.phase {
+                    case .idle: EmptyView()
+                    case .analyzing(let status): ProgressCard(status: status)
+                    case .failed(let message): ErrorCard(message: message)
+                    case .done(let report): ReportView(report: report) { showReply = true }
+                    }
+                    Text("AI detection is probabilistic. Treat results as evidence, not proof.")
+                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        .padding(.top, 8)
+                }
+                .padding(20)
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+            }
+            .background(Background())
+            .navigationTitle("TruthLens")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { model.showSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                }
+                if model.report != nil {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("New scan", systemImage: "arrow.counterclockwise") { model.reset() }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $model.showSettings) { SettingsView() }
+        .sheet(isPresented: $showReply) {
+            if let report = model.report { ReplySheet(report: report) }
+        }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.image, .movie, .audio]) { result in
+            if case .success(let url) = result { model.load(url: url) }
+        }
+        .onChange(of: pickerItem) { _, item in
+            if let item { model.load(pickerItem: item) }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first(where: \.isFileURL) else { return false }
+            model.load(url: url)
+            return true
+        } isTargeted: { targeted = $0 }
+        .task { if !model.hasKey { model.showSettings = true } }
+    }
+
+    // MARK: Pieces
+
+    private var dropZone: some View {
+        VStack(spacing: 16) {
+            if let data = model.previewData, let image = Image(data: data) {
+                image.resizable().scaledToFit()
+                    .frame(maxHeight: 320)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(alignment: .topTrailing) {
+                        if model.previewKind == .video {
+                            Image(systemName: "play.circle.fill").font(.title).padding(10)
+                                .foregroundStyle(.white).shadow(radius: 4)
+                        }
+                    }
+            } else {
+                Image(systemName: model.previewKind == .audio && model.previewData == nil && model.report != nil
+                      ? "waveform" : "sparkle.magnifyingglass")
+                    .font(.system(size: 44, weight: .light))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.tint)
+                Text("Drop a photo, video or audio file").font(.headline)
+                Text("or choose one below. The scan starts instantly.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 12) {
+                PhotosPicker(selection: $pickerItem, matching: .any(of: [.images, .videos])) {
+                    Label("Photos", systemImage: "photo.on.rectangle")
+                }
+                Button { importing = true } label: { Label("Files", systemImage: "folder") }
+                #if os(macOS)
+                Button { if let d = Clipboard.imageData() { model.load(imageData: d) } } label: {
+                    Label("Paste", systemImage: "doc.on.clipboard")
+                }
+                #endif
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(24)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .strokeBorder(targeted ? Color.accentColor : .primary.opacity(0.08),
+                              style: StrokeStyle(lineWidth: targeted ? 3 : 1, dash: targeted ? [8] : []))
+        )
+        .animation(.snappy, value: targeted)
+    }
+
+    private var contextCard: some View {
+        @Bindable var model = model
+        return DisclosureGroup(isExpanded: $showContext) {
+            VStack(spacing: 10) {
+                TextField("Post text (optional)", text: $model.postText, axis: .vertical)
+                    .lineLimit(2...5)
+                TextField("Post link (optional)", text: $model.postURL)
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never).keyboardType(.URL)
+                    #endif
+                    .autocorrectionDisabled()
+                if model.previewData != nil {
+                    Button("Re-scan with context", systemImage: "arrow.clockwise") { model.reanalyze() }
+                        .buttonStyle(.bordered)
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+            .padding(.top, 10)
+        } label: {
+            Label("Add post context for fact-checking", systemImage: "text.bubble")
+                .font(.subheadline.weight(.medium))
+        }
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+struct Background: View {
+    var body: some View {
+        LinearGradient(colors: [Color.accentColor.opacity(0.18), Color.purple.opacity(0.08), .clear],
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+            .ignoresSafeArea()
+    }
+}
+
+struct ProgressCard: View {
+    let status: String
+    var body: some View {
+        HStack(spacing: 14) {
+            ProgressView()
+            Text(status).font(.subheadline.weight(.medium))
+            Spacer()
+        }
+        .padding(18)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+struct ErrorCard: View {
+    let message: String
+    var body: some View {
+        Label(message, systemImage: "exclamationmark.triangle.fill")
+            .font(.subheadline)
+            .foregroundStyle(.orange)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
