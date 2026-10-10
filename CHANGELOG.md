@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.0.4 — Alpha (2026-10-10)
+
+**Highlights:** the app now works without an API key (on-device file checks and drafting), plus a History tab, a Stats tab with usage and cost tracking, audio playback of replies, faster fact checks with live progress, and follow-up questions or challenges on any result.
 
 ### Added
 - **Works without an API key (hybrid mode).** The key is now optional. Without one you still get: file metadata and Content Credentials checks on AI Scan, History, Stats, audio playback, and replies, Community Notes and follow-up answers written by Apple's on-device model (needs Apple Intelligence on macOS 26 / iOS 26 or later). It's free and private, with simpler writing than Claude, no web access, and it may decline some political topics.
