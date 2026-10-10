@@ -28,6 +28,13 @@ struct SettingsView: View {
                 Section("About") {
                     LabeledContent("TruthLens", value: AppInfo.versionString)
                         .accessibilityElement(children: .combine)
+                    LabeledContent("Developed by", value: "Paul Herman")
+                    Link(destination: AppInfo.repoURL) {
+                        Label("GitHub: pmherman/TruthLens", systemImage: "chevron.left.forwardslash.chevron.right")
+                    }
+                    Link(destination: AppInfo.repoURL.appendingPathComponent("issues")) {
+                        Label("Report a bug or suggest a feature", systemImage: "ladybug")
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -41,6 +48,8 @@ struct SettingsView: View {
 }
 
 enum AppInfo {
+    static let repoURL = URL(string: "https://github.com/pmherman/TruthLens")!
+
     /// "Version 0.0.1 (1)", with an "Alpha" tag while the app is pre-1.0.
     static var versionString: String {
         let info = Bundle.main.infoDictionary
