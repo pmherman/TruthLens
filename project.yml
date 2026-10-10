@@ -12,12 +12,16 @@ targets:
     type: application
     supportedDestinations: [iOS, macOS]
     sources: [App]
+    postCompileScripts:
+      - script: '"$SRCROOT/tools/stamp_version.sh"'
+        name: Stamp version from git tag
+        basedOnDependencyAnalysis: false
     dependencies:
       - package: TruthLensCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.truthlens.app
-        MARKETING_VERSION: "0.0.1"
+        MARKETING_VERSION: "0.0.0"   # fallback only; the real version is stamped from the git tag
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -32,3 +36,4 @@ targets:
         DEVELOPMENT_TEAM: U29CM49JZA
         "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/TruthLens.entitlements
         ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: NO

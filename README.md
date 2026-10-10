@@ -38,3 +38,14 @@ A hard embedded AI marker overrides the model's visual opinion.
 ## Next ideas
 Share extension ("Scan with TruthLens" from any app), on-device Core ML detector as a first pass,
 reverse-image search for catfishing, audio spectral model, history tab with SwiftData.
+
+## Versioning and releases
+The app's version comes from the latest git tag (`vX.Y.Z`); there is no version number to edit by hand.
+`tools/stamp_version.sh` runs on every build and writes the tag into the app (build number = commit count).
+Builds made after the tag, or with uncommitted edits, show "unreleased changes" in Settings and About.
+
+To release: update `CHANGELOG.md`, commit, then
+```bash
+git tag -a v0.0.2 -m "TruthLens 0.0.2" && git push origin main v0.0.2
+xcodebuild -project TruthLens.xcodeproj -scheme TruthLens -configuration Release -derivedDataPath build build
+```
