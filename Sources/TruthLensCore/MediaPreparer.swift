@@ -61,10 +61,20 @@ public enum MediaPreparer {
         return jpeg(cg)
     }
 
-    static func jpeg(_ image: CGImage) -> Data? {
+    /// A small, lower-quality JPEG for history thumbnails.
+    public static func thumbnail(from data: Data, maxPixel: Int, quality: Double = 0.6) -> Data? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                     kCGImageSourceCreateThumbnailWithTransform: true,
+                                     kCGImageSourceThumbnailMaxPixelSize: maxPixel]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        return jpeg(cg, quality: quality)
+    }
+
+    static func jpeg(_ image: CGImage, quality: Double = 0.85) -> Data? {
         let out = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
-        CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+        CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
         return CGImageDestinationFinalize(dest) ? out as Data : nil
     }
 

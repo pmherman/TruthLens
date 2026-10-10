@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- **History tab:** every AI scan and fact check is saved with a reduced-quality image, the claim, the result and the whole follow-up thread. Tap an item to reopen it in its own tab and keep going (follow-ups, replies, Community Notes).
+- **Storage meter:** History shows how much space it uses and offers **Clear history** in one tap. A switch turns saving off.
+- **Protect items:** protected items (lock icon) are kept when you clear history or bulk-delete. Delete one item at a time from its menu, or use **Select** to protect or delete several at once. Deleting a protected item always asks first.
+- Search and filter history by AI Scans or Fact Checks.
 - **Search depth:** Quick (up to 3 searches), Standard (5) or Thorough (8) on the Fact Check tab. Fewer searches is faster.
 - **Live progress:** the fact check now streams, showing what it's searching and reading, with a **Cancel** button.
 - **Back to results:** editing a claim no longer throws away the last result. Use "Back to previous results" (or the toolbar button) to return to it without searching again.

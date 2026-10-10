@@ -15,6 +15,7 @@ final class FactCheckModel {
         var applied = false
     }
 
+
     var phase: Phase = .idle
     var status = ""
     var claim = ""
@@ -29,6 +30,10 @@ final class FactCheckModel {
     private(set) var lastReport: FactCheckReport?
     var thread: [Exchange] = []
     var followUpText = ""
+
+    /// Where finished checks and their follow-ups are saved. Set by `AppModel`.
+    var history: HistoryModel?
+    private var entryID: UUID?
 
     private var task: Task<Void, Never>?
     private var followTask: Task<Void, Never>?
@@ -68,6 +73,8 @@ final class FactCheckModel {
                 thread = []
                 lastReport = report
                 phase = .done(report)
+                entryID = history?.recordFact(claim: claim, speaker: speaker, url: url, depth: depth,
+                                              report: report, screenshot: shot)
             } catch {
                 if !Task.isCancelled { phase = .failed(error.localizedDescription) }
             }
@@ -96,6 +103,7 @@ final class FactCheckModel {
         task?.cancel(); followTask?.cancel()
         phase = .idle
         lastReport = nil
+        entryID = nil
         thread = []
         followUpText = ""
         claim = ""; speaker = ""; postURL = ""; screenshot = nil
@@ -118,7 +126,7 @@ final class FactCheckModel {
                 let answer = try await client.followUp(question: q, report: report, history: history) { [weak self] progress in
                     Task { @MainActor in self?.setState(id, .asking(Self.describe(progress))) }
                 }
-                if !Task.isCancelled { setState(id, .answered(answer)) }
+                if !Task.isCancelled { setState(id, .answered(answer)); persist() }
             } catch {
                 if !Task.isCancelled { setState(id, .failed(error.localizedDescription)) }
             }
@@ -139,6 +147,32 @@ final class FactCheckModel {
         thread[i].applied = true
         lastReport = updated
         phase = .done(updated)
+        persist()
+    }
+
+    /// Saves the current result and answered follow-ups onto this check's history entry.
+    private func persist() {
+        guard let entryID, let current = lastReport else { return }
+        let stored = thread.compactMap { ex -> StoredFollowUp? in
+            if case .answered(let a) = ex.state { StoredFollowUp(question: ex.question, answer: a, applied: ex.applied) } else { nil }
+        }
+        history?.updateFact(id: entryID, report: current, thread: stored)
+    }
+
+    // MARK: Restoring from history
+
+    /// Reopens a saved fact check with its inputs, result and follow-up thread.
+    func restore(_ entry: HistoryEntry, thumbnail: Data?) {
+        guard let fact = entry.fact else { return }
+        task?.cancel(); followTask?.cancel()
+        claim = fact.claim; speaker = fact.speaker; postURL = fact.url
+        depth = FactDepth(rawValue: fact.depth) ?? depth
+        screenshot = thumbnail
+        thread = fact.thread.map { Exchange(question: $0.question, state: .answered($0.answer), applied: $0.applied) }
+        followUpText = ""
+        lastReport = fact.report
+        entryID = entry.id
+        phase = .done(fact.report)
     }
 
     // MARK: Screenshot

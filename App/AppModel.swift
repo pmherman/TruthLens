@@ -16,6 +16,8 @@ struct PickedMovie: Transferable {
     }
 }
 
+enum AppTab: Hashable { case scan, factCheck, history }
+
 @MainActor @Observable
 final class AppModel {
     enum Phase { case idle, analyzing(String), done(AnalysisReport), failed(String) }
@@ -27,6 +29,12 @@ final class AppModel {
         didSet { Keychain.save(apiKey) }
     }
     var showSettings = false
+    var tab: AppTab = .scan
+
+    let history = HistoryModel()
+    let factCheck = FactCheckModel()
+
+    init() { factCheck.history = history }
 
     private var task: Task<Void, Never>?
 
@@ -89,10 +97,31 @@ final class AppModel {
         task = Task {
             do {
                 let report = try await client.analyze(prepared)
-                if !Task.isCancelled { phase = .done(report) }
+                if !Task.isCancelled {
+                    phase = .done(report)
+                    history.recordScan(report: report, kind: prepared.kind, image: prepared.frames.first)
+                }
             } catch {
                 if !Task.isCancelled { phase = .failed(error.localizedDescription) }
             }
+        }
+    }
+
+    // MARK: History
+
+    /// Reopens a saved scan or fact check in its own tab.
+    func open(_ entry: HistoryEntry) {
+        switch entry.kind {
+        case .scan:
+            guard let scan = entry.scan else { return }
+            task?.cancel()
+            previewData = history.thumbnail(for: entry.id)
+            previewKind = scan.mediaKind
+            phase = .done(scan.report)
+            tab = .scan
+        case .factCheck:
+            factCheck.restore(entry, thumbnail: history.thumbnail(for: entry.id))
+            tab = .factCheck
         }
     }
 }

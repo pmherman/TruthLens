@@ -176,5 +176,107 @@ final class CoreTests: XCTestCase {
         XCTAssertLessThan(FactDepth.standard.maxSearches, FactDepth.thorough.maxSearches)
         XCTAssertTrue(Prompts.factCheckSystem(depth: .quick).contains("at most 3 web searches"))
     }
+
+    // MARK: History
+
+    private func tempStorage() -> HistoryStorage {
+        HistoryStorage(root: FileManager.default.temporaryDirectory
+            .appendingPathComponent("truthlens-tests-\(UUID().uuidString)"))
+    }
+
+    private func scanEntry(protected: Bool = false, date: Date = .now, thumb: Bool = false) -> HistoryEntry {
+        HistoryEntry(date: date, kind: .scan, protected: protected, hasThumbnail: thumb,
+                     scan: ScanRecord(mediaKind: .image,
+                                      report: AnalysisReport(aiScore: 82, verdict: .likelyAI, headline: "Looks synthetic",
+                                                             reasons: [], risks: [])))
+    }
+
+    private func factEntry(protected: Bool = false, date: Date = .now) -> HistoryEntry {
+        let src = source("https://eia.gov/x", .contradicts)
+        let answer = FollowUpAnswer(answer: "a", sources: [src],
+                                    revision: Revision(rating: .partiallyTrue, headline: "h2", reason: "r"))
+        return HistoryEntry(date: date, kind: .factCheck, protected: protected, hasThumbnail: false,
+                            fact: FactRecord(claim: "Gas is down", speaker: "A commentator", url: "https://x.com/p",
+                                             depth: "standard", report: report(.false_, sources: [src]),
+                                             thread: [StoredFollowUp(question: "q", answer: answer, applied: true)]))
+    }
+
+    func testHistoryRoundTripKeepsClaimThreadAndThumbnail() throws {
+        let store = tempStorage(); defer { try? FileManager.default.removeItem(at: store.root) }
+        let fact = factEntry(), scan = scanEntry(thumb: true)
+        try store.save(fact)
+        try store.save(scan, thumbnail: Data("jpeg-bytes".utf8))
+        let loaded = store.loadAll()
+        XCTAssertEqual(loaded.count, 2)
+        let f = try XCTUnwrap(loaded.first { $0.id == fact.id }?.fact)
+        XCTAssertEqual(f.claim, "Gas is down")
+        XCTAssertEqual(f.report.rating, .false_)
+        XCTAssertEqual(f.thread.first?.answer.revision?.rating, .partiallyTrue)
+        XCTAssertTrue(f.thread.first?.applied == true)
+        XCTAssertEqual(store.thumbnail(for: scan.id), Data("jpeg-bytes".utf8))
+        XCTAssertNil(store.thumbnail(for: fact.id))
+    }
+
+    func testResavingAnEntryKeepsItsThumbnail() throws {
+        let store = tempStorage(); defer { try? FileManager.default.removeItem(at: store.root) }
+        var e = scanEntry(thumb: true)
+        try store.save(e, thumbnail: Data("t".utf8))
+        e.protected = true
+        try store.save(e)
+        XCTAssertEqual(store.thumbnail(for: e.id), Data("t".utf8))
+        XCTAssertTrue(store.loadAll().first?.protected == true)
+    }
+
+    func testLoadIsNewestFirstAndSkipsCorruptFolders() throws {
+        let store = tempStorage(); defer { try? FileManager.default.removeItem(at: store.root) }
+        let old = scanEntry(date: Date(timeIntervalSince1970: 1_000)), new = scanEntry(date: Date(timeIntervalSince1970: 2_000))
+        try store.save(old); try store.save(new)
+        let junk = store.root.appendingPathComponent("junk"); try FileManager.default.createDirectory(at: junk, withIntermediateDirectories: true)
+        try Data("not json".utf8).write(to: junk.appendingPathComponent("item.json"))
+        XCTAssertEqual(store.loadAll().map(\.id), [new.id, old.id])
+    }
+
+    func testDeleteAndSizeAccounting() throws {
+        let store = tempStorage(); defer { try? FileManager.default.removeItem(at: store.root) }
+        let a = scanEntry(thumb: true), b = scanEntry()
+        try store.save(a, thumbnail: Data(repeating: 1, count: 5_000)); try store.save(b)
+        XCTAssertGreaterThan(store.bytes(of: a.id), 5_000)
+        XCTAssertEqual(store.totalBytes(), store.bytes(of: a.id) + store.bytes(of: b.id))
+        store.delete([a.id])
+        XCTAssertEqual(store.loadAll().map(\.id), [b.id])
+        XCTAssertEqual(store.totalBytes(), store.bytes(of: b.id))
+        XCTAssertEqual(store.bytes(of: a.id), 0)
+    }
+
+    func testProtectedEntriesSurviveClearAndBulkDelete() {
+        let keep = scanEntry(protected: true), drop = factEntry()
+        let all = [keep, drop]
+        XCTAssertEqual(HistoryPolicy.clearable(all).map(\.id), [drop.id])
+        let split = HistoryPolicy.split(selection: [keep.id, drop.id], in: all)
+        XCTAssertEqual(split.deletable, [drop.id])
+        XCTAssertEqual(split.keptProtected, 1)
+    }
+
+    func testEntryTitleBadgeAndSearch() {
+        XCTAssertEqual(scanEntry().badge, "Likely AI · 82")
+        let f = factEntry()
+        XCTAssertEqual(f.title, f.fact?.report.claim)
+        XCTAssertTrue(f.searchText.contains("gas is down"))
+        XCTAssertEqual(f.badge, "False")
+        XCTAssertTrue(f.searchText.contains("commentator"))
+    }
+
+    func testThumbnailIsMuchSmallerThanTheOriginal() throws {
+        let space = CGColorSpaceCreateDeviceRGB()
+        let ctx = try XCTUnwrap(CGContext(data: nil, width: 2000, height: 1500, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        for i in 0..<40 {
+            ctx.setFillColor(red: CGFloat(i % 7) / 7, green: CGFloat(i % 5) / 5, blue: CGFloat(i % 3) / 3, alpha: 1)
+            ctx.fill(CGRect(x: i * 50, y: i * 37, width: 300, height: 200))
+        }
+        let original = try XCTUnwrap(MediaPreparer.jpeg(try XCTUnwrap(ctx.makeImage())))
+        let thumb = try XCTUnwrap(MediaPreparer.thumbnail(from: original, maxPixel: 480))
+        XCTAssertLessThan(thumb.count, original.count / 3)
+    }
 }
 

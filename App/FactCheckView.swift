@@ -55,7 +55,7 @@ extension Stance {
 
 struct FactCheckView: View {
     @Environment(AppModel.self) private var app
-    @State private var model = FactCheckModel()
+    private var model: FactCheckModel { app.factCheck }
     @State private var pickerItem: PhotosPickerItem?
     @State private var importing = false
     @State private var showReply = false
@@ -125,7 +125,7 @@ struct FactCheckView: View {
     // MARK: Input
 
     private var inputCard: some View {
-        @Bindable var model = model
+        @Bindable var model = app.factCheck
         return VStack(alignment: .leading, spacing: 14) {
             Label("What's the claim?", systemImage: "quote.opening").font(.headline)
             TextEditor(text: $model.claim)
